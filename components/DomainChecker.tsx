@@ -109,37 +109,28 @@ export function DomainChecker() {
         if (results.length === 0) return;
 
         const exportData = results.map(r => {
-            const base = {
+            const healthCheckLines: string[] = [];
+
+            // Helper to format category stats
+            const addCatStats = (name: string, stats: { errors: number, warnings: number, passed: number }) => {
+                healthCheckLines.push(name);
+                if (stats.errors > 0) healthCheckLines.push(`${stats.errors} Errors`);
+                if (stats.warnings > 0) healthCheckLines.push(`${stats.warnings} Warnings`);
+                healthCheckLines.push(`${stats.passed} Passed`);
+            };
+
+            addCatStats('Problems', r.categories.problems.stats);
+            addCatStats('Blacklist', r.categories.blacklist.stats);
+            addCatStats('Mail Server', r.categories.mailServer.stats);
+            addCatStats('Web Server', r.categories.webServer.stats);
+            addCatStats('DNS', r.categories.dns.stats);
+
+            return {
                 'Domain': r.domain,
-                'SPF Record': r.rawSpf || 'Missing',
-                'DMARC Record': r.rawDmarc || 'Missing',
-                'DMARC Policy': r.dmarcPolicy || 'None',
-                'MX Records': r.mxRecords.join(', '),
+                'SPF [Full]': r.rawSpf || 'Missing',
+                'DMARC [Full]': r.rawDmarc || 'Missing',
+                'Health Check': healthCheckLines.join('\n')
             };
-
-            // Add summary stats
-            const stats = {
-                'Problems Errors': r.categories.problems.stats.errors,
-                'Problems Warnings': r.categories.problems.stats.warnings,
-                'Blacklist Errors': r.categories.blacklist.stats.errors,
-                'Mail Server Errors': r.categories.mailServer.stats.errors,
-                'Web Server Errors': r.categories.webServer.stats.errors,
-                'DNS Errors': r.categories.dns.stats.errors,
-            };
-
-            // Add every single test result as a column
-            const detailColumns: Record<string, string> = {};
-            Object.values(r.categories).forEach(cat => {
-                cat.tests.forEach(test => {
-                    // Column name: "[Category] Test Name"
-                    // Value: "Pass" or "Error: Info"
-                    const colName = `[${cat.category}] ${test.name}`;
-                    const val = test.status === 'Pass' ? 'Pass' : `${test.status}: ${test.info}`;
-                    detailColumns[colName] = val;
-                });
-            });
-
-            return { ...base, ...stats, ...detailColumns };
         });
 
         const ws = XLSX.utils.json_to_sheet(exportData);
