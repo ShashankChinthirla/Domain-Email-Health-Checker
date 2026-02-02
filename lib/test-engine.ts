@@ -181,6 +181,12 @@ async function runBlacklistTests(mxRecords: string[]): Promise<TestResult[]> {
         return [{ name: 'Blacklist Check', status: 'Warning', info: 'No MX to check' }];
     }
 
+    const primaryMx = mxRecords[0].toLowerCase();
+
+    // Major providers that are often listed on PBL/Policy lists or have noisy IPs but are trusted
+    const TRUSTED_PROVIDERS = ['google.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'protection.outlook.com', 'mimecast.com'];
+    const isTrusted = TRUSTED_PROVIDERS.some(p => primaryMx.endsWith(p));
+
     // Resolve first MX IP
     let ip: string | null = null;
     try {
@@ -195,10 +201,19 @@ async function runBlacklistTests(mxRecords: string[]): Promise<TestResult[]> {
 
     const results = await checkDNSBL(ip);
     for (const res of results) {
+        let status: TestStatus = res.isListed ? 'Error' : 'Pass';
+        let info = res.isListed ? `Listed (${ip})` : 'Clean';
+
+        // Override for trusted providers to mimic MxToolbox/practicality
+        if (res.isListed && isTrusted) {
+            status = 'Pass';
+            info = `Listed (Ignored - ${primaryMx} is trusted)`;
+        }
+
         tests.push({
             name: `${res.list}`,
-            status: res.isListed ? 'Error' : 'Pass',
-            info: res.isListed ? `Listed (${ip})` : 'Clean'
+            status: status,
+            info: info
         });
     }
 
