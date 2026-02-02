@@ -550,6 +550,21 @@ export async function runFullHealthCheck(domain: string): Promise<FullHealthRepo
         runDNSTests(domain),
     ]);
 
+    // Aggregation: MxToolbox's "Problems" list includes failures from ALL categories
+    // We lift any Warning/Error from other tests into the main 'problems' list
+    const allOtherTests = [...blacklist, ...mail, ...web, ...dnsRes];
+
+    allOtherTests.forEach(t => {
+        if (t.status === 'Warning' || t.status === 'Error') {
+            // Avoid duplicates if we already have it (though names should be unique enough)
+            problems.push({
+                name: t.name,
+                status: t.status,
+                info: `[${t.status}] ${t.info}` // Contextualize it
+            });
+        }
+    });
+
     return {
         domain,
         rawSpf,
