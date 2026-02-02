@@ -108,15 +108,40 @@ export function DomainChecker() {
     const exportToExcel = () => {
         if (results.length === 0) return;
 
+        const generateUpdatedSpf = (raw: string | null) => {
+            if (!raw) return 'v=spf1 a mx ~all';
+            return raw.replace(/-all/g, '~all');
+        };
+
+        const generateUpdatedDmarc = (raw: string | null, domain: string) => {
+            let rua = '';
+            let ruf = '';
+
+            if (raw) {
+                const ruaMatch = raw.match(/rua=([^;]+)/i);
+                const rufMatch = raw.match(/ruf=([^;]+)/i);
+                if (ruaMatch) rua = ruaMatch[1].trim();
+                if (rufMatch) ruf = rufMatch[1].trim();
+            }
+
+            const lines = ['v=DMARC1; p=reject; sp=reject; pct=100;'];
+            if (rua) lines.push(`rua=${rua};`);
+            if (ruf) lines.push(`ruf=${ruf};`);
+            lines.push('adkim=r; aspf=r;');
+
+            return lines.join('\n');
+        };
+
         const exportData = results.map(r => {
             const healthCheckLines: string[] = [];
 
             // Helper to format category stats
             const addCatStats = (name: string, stats: { errors: number, warnings: number, passed: number }) => {
-                healthCheckLines.push(name);
-                if (stats.errors > 0) healthCheckLines.push(`${stats.errors} Errors`);
-                if (stats.warnings > 0) healthCheckLines.push(`${stats.warnings} Warnings`);
-                healthCheckLines.push(`${stats.passed} Passed`);
+                if (healthCheckLines.length > 0) healthCheckLines.push('');
+                healthCheckLines.push(`[ ${name.toUpperCase()} ]`);
+                if (stats.errors > 0) healthCheckLines.push(`• ${stats.errors} Errors`);
+                if (stats.warnings > 0) healthCheckLines.push(`• ${stats.warnings} Warnings`);
+                healthCheckLines.push(`• ${stats.passed} Passed`);
             };
 
             addCatStats('Problems', r.categories.problems.stats);
@@ -128,12 +153,25 @@ export function DomainChecker() {
             return {
                 'Domain': r.domain,
                 'SPF [Full]': r.rawSpf || 'Missing',
+                'Updated SPF [Full]': generateUpdatedSpf(r.rawSpf),
                 'DMARC [Full]': r.rawDmarc || 'Missing',
+                'Updated DMARC [Full]': generateUpdatedDmarc(r.rawDmarc, r.domain),
                 'Health Check': healthCheckLines.join('\n')
             };
         });
 
         const ws = XLSX.utils.json_to_sheet(exportData);
+
+        // Set column widths
+        ws['!cols'] = [
+            { wch: 25 }, // Domain
+            { wch: 50 }, // SPF
+            { wch: 50 }, // Updated SPF
+            { wch: 50 }, // DMARC
+            { wch: 50 }, // Updated DMARC
+            { wch: 50 }, // Health Check
+        ];
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Detailed Results');
         XLSX.writeFile(wb, 'domain-health-deep-analysis.xlsx');

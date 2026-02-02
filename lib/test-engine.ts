@@ -297,11 +297,11 @@ async function checkSmtp(host: string, port: number): Promise<SmtpResult> {
         let banner: string | null = null;
         let supportsTls = false;
 
-        // Reduced timeout to 3000ms for faster feedback
+        // Reduced timeout to 2000ms for faster feedback (Targeting < 10s total)
         const timeout = setTimeout(() => {
             socket.destroy();
             resolve({ canConnect: false, banner: null, bannerHostname: null, supportsTls: false, time: 0, error: 'Timeout' });
-        }, 3000);
+        }, 2000);
 
         socket.connect(port, host, () => {
             // wait for data
@@ -339,7 +339,7 @@ async function checkSmtp(host: string, port: number): Promise<SmtpResult> {
 
 // 4. Web Server (5+ Tests) - Fully Parallelized
 async function runWebServerTests(domain: string): Promise<TestResult[]> {
-    const timeoutSignal = AbortSignal.timeout(3500); // Unified 3.5s timeout for all fetch
+    const timeoutSignal = AbortSignal.timeout(2500); // Reduced to 2.5s for speed
 
     // Define individual checks
     const checkHttp = async (): Promise<TestResult[]> => {
