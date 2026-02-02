@@ -254,68 +254,72 @@ async function runMailServerTests(domain: string, mx: string[]): Promise<TestRes
         return tests;
     }
 
-    const primaryMx = mx[0];
-    let ip: string | null = null;
-    let ptr: string | null = null;
+    // Check ALL MX records (up to 5 to avoid timeout)
+    const mxToCheck = mx.slice(0, 5); // Limit to top 5
 
-    // Parallelize Resolution: MX IP and Reverse DNS (needs IP first, so chained)
-    try {
-        const ips = await dns.resolve4(primaryMx);
-        ip = ips[0];
-        tests.push({ name: 'MX Hostname Resolution', status: 'Pass', info: `${primaryMx} -> ${ip}` });
+    // We run the full connection test parallel for all of them
+    const promises = mxToCheck.map(async (mxHost) => {
+        const localResults: TestResult[] = [];
 
-        // Reverse DNS lookup immediately after IP is known
+        let ip: string | null = null;
+        let ptr: string | null = null;
+
         try {
-            const ptrs = await dns.resolvePtr(ip);
-            if (ptrs.length > 0) {
-                ptr = ptrs[0];
-                tests.push({ name: 'Reverse DNS (PTR)', status: 'Pass', info: ptr });
-            } else {
-                tests.push({ name: 'Reverse DNS (PTR)', status: 'Warning', info: 'Missing' });
+            const ips = await dns.resolve4(mxHost);
+            ip = ips[0];
+            // Only add this info for the primary to avoid clutter, or add generic info
+            if (mxHost === mx[0]) localResults.push({ name: 'MX Hostname Resolution', status: 'Pass', info: `${mxHost} -> ${ip}` });
+
+            try {
+                const ptrs = await dns.resolvePtr(ip);
+                if (ptrs.length > 0) {
+                    ptr = ptrs[0];
+                    if (mxHost === mx[0]) localResults.push({ name: 'Reverse DNS (PTR)', status: 'Pass', info: ptr });
+                } else {
+                    if (mxHost === mx[0]) localResults.push({ name: 'Reverse DNS (PTR)', status: 'Warning', info: 'Missing' });
+                }
+            } catch {
+                if (mxHost === mx[0]) localResults.push({ name: 'Reverse DNS (PTR)', status: 'Warning', info: 'Failed' });
             }
         } catch {
-            tests.push({ name: 'Reverse DNS (PTR)', status: 'Warning', info: 'Failed' });
+            if (mxHost === mx[0]) localResults.push({ name: 'MX Hostname Resolution', status: 'Error', info: 'Failed' });
         }
 
-    } catch {
-        tests.push({ name: 'MX Hostname Resolution', status: 'Error', info: 'Failed' });
-        // Can't continue with IP-based tests efficiently, but we can try socket connect to hostname
-    }
+        // SMTP Check
+        const smtpCheck = await checkSmtp(mxHost, 25);
 
-    // Parallelize SMTP Checks (Port 25 and 587)
-    const [smtpCheck, submissionCheck] = await Promise.all([
-        checkSmtp(primaryMx, 25),
-        checkSmtp(primaryMx, 587)
-    ]);
+        // Primary gets specific connectivity log
+        if (mxHost === mx[0]) {
+            localResults.push({ name: 'SMTP Connect (Port 25)', status: smtpCheck.canConnect ? 'Pass' : 'Warning', info: smtpCheck.error || 'Connected' });
+        }
 
-    // Process Port 25 Results
-    tests.push({ name: 'SMTP Connect (Port 25)', status: smtpCheck.canConnect ? 'Pass' : 'Warning', info: smtpCheck.error || 'Connected' });
-
-    if (smtpCheck.banner) {
-        tests.push({ name: 'SMTP Banner', status: 'Pass', info: 'Received' });
-        tests.push({ name: 'SMTP Transaction Time', status: 'Pass', info: `${smtpCheck.time}ms` });
-
-        // Banner Sync
-        if (ptr) {
-            const cleanPtr = ptr.replace(/\.$/, '').toLowerCase();
-            const bannerLower = smtpCheck.banner.toLowerCase();
-            if (bannerLower.includes(cleanPtr) || cleanPtr.includes(smtpCheck.bannerHostname || '@@@')) {
-                tests.push({ name: 'Banner Matches PTR', status: 'Pass', info: 'Consistent' });
-            } else {
-                tests.push({ name: 'Banner Matches PTR', status: 'Warning', info: 'Mismatch/Hard to verify' });
+        if (smtpCheck.banner) {
+            // Banner Sync Check (The key one MxToolbox flags for all)
+            if (ptr) {
+                const cleanPtr = ptr.replace(/\.$/, '').toLowerCase();
+                const bannerLower = smtpCheck.banner.toLowerCase();
+                // MxToolbox is strict: Banner must explicitly contain the hostname or PTR
+                if (bannerLower.includes(cleanPtr) || cleanPtr.includes(smtpCheck.bannerHostname || '@@@')) {
+                    // Good
+                } else {
+                    localResults.push({ name: `SMTP Banner Mismatch (${mxHost})`, status: 'Warning', info: 'Reverse DNS does not match SMTP Banner' });
+                }
             }
         }
-    }
 
-    if (smtpCheck.supportsTls) {
-        tests.push({ name: 'SMTP TLS Support', status: 'Pass', info: 'Advertised' });
-    }
+        return localResults;
+    });
 
-    // Process Port 587 Results
+    const nestedResults = await Promise.all(promises);
+    nestedResults.forEach(r => tests.push(...r));
+
+    // Secondary check for Port 587 on Primary only (Submission)
+    const submissionCheck = await checkSmtp(mx[0], 587);
     tests.push({ name: 'SMTP Submission (Port 587)', status: submissionCheck.canConnect ? 'Pass' : 'Pass', info: submissionCheck.canConnect ? 'Open' : 'Closed/Filtered (Common)' });
 
     return tests;
 }
+
 
 interface SmtpResult {
     canConnect: boolean;
@@ -490,8 +494,10 @@ async function runDNSTests(domain: string): Promise<TestResult[]> {
         if (resSOA.refresh >= 1200 && resSOA.refresh <= 86400) tests.push({ name: 'SOA Refresh', status: 'Pass', info: 'OK' });
         else tests.push({ name: 'SOA Refresh', status: 'Warning', info: 'Outside best practice' });
 
-        if (resSOA.expire >= 604800) tests.push({ name: 'SOA Expire', status: 'Pass', info: 'OK (> 7 days)' });
-        else tests.push({ name: 'SOA Expire', status: 'Warning', info: 'Too short' });
+        // MxToolbox is strict about Expire: 2-4 weeks (1209600 - 2419200)
+        // salesfullclaritydev.com seems to fail this
+        if (resSOA.expire >= 1209600 && resSOA.expire <= 2419200) tests.push({ name: 'SOA Expire', status: 'Pass', info: 'OK' });
+        else tests.push({ name: 'SOA Expire', status: 'Warning', info: 'Expire Value out of recommended range' });
 
     } else {
         tests.push({ name: 'SOA Record Found', status: 'Error', info: 'Missing' });
