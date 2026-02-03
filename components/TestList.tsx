@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { CategoryResult, TestResult } from '@/lib/test-engine';
+import { CategoryResult, TestResult } from '@/lib/types';
 import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function TestList({ categories }: { categories: CategoryResult[] }) {
-    // Flatten tests or show by category. MXToolbox shows by category.
+    if (!categories || categories.length === 0) return <div>No tests available.</div>;
+
     return (
         <div className="space-y-6 mt-8">
             <h3 className="text-xl font-bold text-gray-900">Health Check Analysis</h3>
@@ -17,9 +18,11 @@ export function TestList({ categories }: { categories: CategoryResult[] }) {
 
 function CategorySection({ category }: { category: CategoryResult }) {
     const [isOpen, setIsOpen] = useState(true);
+    // Safe ID generation
+    const categoryId = `cat-${(category.category || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
     return (
-        <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white">
+        <div id={categoryId} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white scroll-mt-24">
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
@@ -51,7 +54,7 @@ function CategorySection({ category }: { category: CategoryResult }) {
                                 <p className={cn("text-sm font-medium", getStatusColor(test.status))}>
                                     {test.name}
                                 </p>
-                                <p className="text-xs text-gray-500 mt-0.5">
+                                <p className="text-xs text-gray-500 mt-0.5 break-all">
                                     {test.info}
                                 </p>
                             </div>

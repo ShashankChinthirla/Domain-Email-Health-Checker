@@ -2,18 +2,22 @@
 
 import React, { useState, useRef } from 'react';
 import { ResultTable } from './ResultTable';
-import { FullHealthReport } from '@/lib/test-engine';
+import { ProblemTable } from './ProblemTable';
+import { ProblemSummaryTable } from './ProblemSummaryTable';
+import { FullHealthReport } from '@/lib/types';
 import { HealthSummary } from './HealthCards';
 import { RawRecord } from './RawRecord';
 import { TestList } from './TestList';
+import { VerdictBanner } from './VerdictBanner';
+import { TechnicalConfig } from './TechnicalConfig';
 import * as XLSX from 'xlsx';
-import { Download, Upload, Search, Loader2, ArrowRight } from 'lucide-react';
+import { Download, Upload, Search, Loader2 } from 'lucide-react';
 
 export function DomainChecker() {
     const [domainInput, setDomainInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [results, setResults] = useState<FullHealthReport[]>([]); // For Bulk Table
-    const [currentSingleResult, setCurrentSingleResult] = useState<FullHealthReport | null>(null); // For Single View
+    const [results, setResults] = useState<FullHealthReport[]>([]);
+    const [currentSingleResult, setCurrentSingleResult] = useState<FullHealthReport | null>(null);
     const [inputError, setInputError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -42,14 +46,13 @@ export function DomainChecker() {
         if (!domainInput.trim()) return;
         setLoading(true);
         setInputError(null);
-        setCurrentSingleResult(null); // Clear previous single view
+        setCurrentSingleResult(null);
 
-        // Slight delay to allow UI to show loading state
         await new Promise(r => setTimeout(r, 100));
 
         const result = await checkDomain(domainInput);
         if (result) {
-            setResults((prev) => [...prev, result]); // Also add to table history
+            setResults((prev) => [...prev, result]);
             setCurrentSingleResult(result);
             setDomainInput('');
         } else {
@@ -85,7 +88,7 @@ export function DomainChecker() {
                 }
 
                 setLoading(true);
-                setCurrentSingleResult(null); // Clear single view for bulk
+                setCurrentSingleResult(null);
 
                 for (const d of domainsToCheck) {
                     const res = await checkDomain(d);
@@ -105,37 +108,35 @@ export function DomainChecker() {
         reader.readAsBinaryString(file);
     };
 
+    const generateUpdatedSpf = (raw: string | null) => {
+        if (!raw) return 'v=spf1 a mx ~all';
+        return raw.replace(/-all/g, '~all').replace(/\?all/g, '~all');
+    };
+
+    const generateUpdatedDmarc = (raw: string | null, domain: string) => {
+        let rua = '';
+        let ruf = '';
+        if (raw) {
+            const ruaMatch = raw.match(/rua=([^;]+)/i);
+            const rufMatch = raw.match(/ruf=([^;]+)/i);
+            if (ruaMatch) rua = ruaMatch[1].trim();
+            if (rufMatch) ruf = rufMatch[1].trim();
+        } else {
+            rua = `mailto:dmarc-reports@${domain}`;
+            ruf = `mailto:dmarc-reports@${domain}`;
+        }
+        let rec = 'v=DMARC1; p=reject; sp=reject; pct=100;';
+        if (rua) rec += ` rua=${rua};`;
+        if (ruf) rec += ` ruf=${ruf};`;
+        rec += ' adkim=r; aspf=r;';
+        return rec;
+    };
+
     const exportToExcel = () => {
         if (results.length === 0) return;
-
-        const generateUpdatedSpf = (raw: string | null) => {
-            if (!raw) return 'v=spf1 a mx ~all';
-            return raw.replace(/-all/g, '~all');
-        };
-
-        const generateUpdatedDmarc = (raw: string | null, domain: string) => {
-            let rua = '';
-            let ruf = '';
-
-            if (raw) {
-                const ruaMatch = raw.match(/rua=([^;]+)/i);
-                const rufMatch = raw.match(/ruf=([^;]+)/i);
-                if (ruaMatch) rua = ruaMatch[1].trim();
-                if (rufMatch) ruf = rufMatch[1].trim();
-            }
-
-            const lines = ['v=DMARC1; p=reject; sp=reject; pct=100;'];
-            if (rua) lines.push(`rua=${rua};`);
-            if (ruf) lines.push(`ruf=${ruf};`);
-            lines.push('adkim=r; aspf=r;');
-
-            return lines.join('\n');
-        };
-
         const exportData = results.map(r => {
             const healthCheckLines: string[] = [];
 
-            // Helper to format category stats
             const addCatStats = (name: string, stats: { errors: number, warnings: number, passed: number }) => {
                 if (healthCheckLines.length > 0) healthCheckLines.push('');
                 healthCheckLines.push(`[ ${name.toUpperCase()} ]`);
@@ -145,10 +146,12 @@ export function DomainChecker() {
             };
 
             addCatStats('Problems', r.categories.problems.stats);
-            addCatStats('Blacklist', r.categories.blacklist.stats);
-            addCatStats('Mail Server', r.categories.mailServer.stats);
-            addCatStats('Web Server', r.categories.webServer.stats);
             addCatStats('DNS', r.categories.dns.stats);
+            addCatStats('SPF', r.categories.spf.stats);
+            addCatStats('DMARC', r.categories.dmarc.stats);
+            addCatStats('DKIM', r.categories.dkim.stats);
+            addCatStats('Blacklist', r.categories.blacklist.stats);
+            addCatStats('Web Server', r.categories.webServer.stats);
 
             return {
                 'Domain': r.domain,
@@ -161,16 +164,7 @@ export function DomainChecker() {
         });
 
         const ws = XLSX.utils.json_to_sheet(exportData);
-
-        // Set column widths
-        ws['!cols'] = [
-            { wch: 25 }, // Domain
-            { wch: 50 }, // SPF
-            { wch: 50 }, // Updated SPF
-            { wch: 50 }, // DMARC
-            { wch: 50 }, // Updated DMARC
-            { wch: 50 }, // Health Check
-        ];
+        ws['!cols'] = [{ wch: 25 }, { wch: 50 }, { wch: 50 }, { wch: 50 }, { wch: 50 }, { wch: 50 }];
 
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Detailed Results');
@@ -178,15 +172,18 @@ export function DomainChecker() {
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleManualCheck();
-        }
+        if (e.key === 'Enter') handleManualCheck();
+    };
+
+    const scrollToCategory = (category: string) => {
+        const id = `cat-${category.toLowerCase().replace(/ /g, '-')}`;
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     return (
-        <div className="max-w-5xl mx-auto space-y-8 pb-20">
+        <div className="max-w-5xl mx-auto space-y-12 pb-24">
 
-            {/* Input Section */}
             <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
                 <label className="block text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">
                     Analyze Domain
@@ -214,40 +211,22 @@ export function DomainChecker() {
                         Check Domain
                     </button>
                 </div>
-
                 {inputError && (
                     <p className="mt-3 text-sm text-red-600 font-medium flex items-center">
                         <Upload className="w-4 h-4 mr-1.5" />
                         {inputError}
                     </p>
                 )}
-
                 <div className="mt-6 flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-gray-100">
                     <div className="flex items-center">
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            accept=".xlsx, .xls"
-                            className="hidden"
-                            onChange={handleFileUpload}
-                        />
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={loading}
-                            className="text-gray-600 hover:text-gray-900 text-sm font-medium flex items-center transition-colors"
-                        >
-                            <Upload className="w-4 h-4 mr-2" />
-                            Upload Excel List
+                        <input type="file" ref={fileInputRef} accept=".xlsx, .xls" className="hidden" onChange={handleFileUpload} />
+                        <button onClick={() => fileInputRef.current?.click()} disabled={loading} className="text-gray-600 hover:text-gray-900 text-sm font-medium flex items-center transition-colors">
+                            <Upload className="w-4 h-4 mr-2" /> Upload Excel List
                         </button>
                     </div>
-
                     {results.length > 0 && (
-                        <button
-                            onClick={exportToExcel}
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center transition-colors"
-                        >
-                            <Download className="w-4 h-4 mr-2" />
-                            Export Full Report (.xlsx)
+                        <button onClick={exportToExcel} className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center transition-colors">
+                            <Download className="w-4 h-4 mr-2" /> Export Full Report (.xlsx)
                         </button>
                     )}
                 </div>
@@ -261,40 +240,79 @@ export function DomainChecker() {
                 </div>
             )}
 
-            {/* SINGLE RESULT VIEW */}
             {currentSingleResult && !loading && (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="mb-6 flex items-center justify-between">
-                        <div>
-                            <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-                                {currentSingleResult.domain}
-                                <span className="ml-3 px-3 py-1 bg-green-100 text-green-800 text-xs font-bold uppercase rounded-full tracking-wide">
-                                    Report Ready
-                                </span>
-                            </h2>
-                            <p className="text-gray-500 text-sm mt-1">Generated by Domain Email Health Checker Engine</p>
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-12">
+
+                    {/* 1. Technical Configuration */}
+                    <TechnicalConfig
+                        domain={currentSingleResult.domain}
+                        rawSpf={currentSingleResult.rawSpf}
+                        updatedSpf={generateUpdatedSpf(currentSingleResult.rawSpf)}
+                        rawDmarc={currentSingleResult.rawDmarc}
+                        updatedDmarc={generateUpdatedDmarc(currentSingleResult.rawDmarc, currentSingleResult.domain)}
+                    />
+
+                    {/* 2. Verdict Banner */}
+                    <div className="">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-3xl font-bold text-gray-900">{currentSingleResult.domain}</h2>
+                            <span className="text-sm text-gray-500 hidden sm:inline">
+                                Report Generated: {new Date().toLocaleTimeString()}
+                            </span>
                         </div>
+                        <VerdictBanner report={currentSingleResult} />
                     </div>
 
-                    {/* Raw Records */}
-                    <div className="grid md:grid-cols-2 gap-6 mb-8">
-                        <RawRecord title="DMARC Record" record={currentSingleResult.rawDmarc} type="dmarc" />
-                        <RawRecord title="SPF Record" record={currentSingleResult.rawSpf} type="spf" />
-                    </div>
+                    {/* 2. Health Cards (Category Summary - Top Row) */}
+                    {(() => {
+                        const cats = currentSingleResult.categories;
+                        const orderedCategories = [
+                            cats.problems,
+                            cats.blacklist,
+                            cats.smtp,
+                            cats.webServer,
+                            cats.dns,
+                            cats.spf,
+                            cats.dmarc,
+                            cats.dkim
+                        ].filter(Boolean);
 
-                    {/* Health Cards */}
-                    <h3 className="text-lg font-bold text-gray-900 mb-4">Domain Health Report</h3>
-                    <HealthSummary categories={Object.values(currentSingleResult.categories)} />
+                        return (
+                            <>
+                                <div>
+                                    {/* <h3 className="text-xl font-bold text-gray-900 mb-4">Diagnostic Summary</h3> */}
+                                    <HealthSummary
+                                        categories={orderedCategories}
+                                        onCategoryClick={scrollToCategory}
+                                    />
+                                </div>
 
-                    {/* Detailed Test List */}
-                    <TestList categories={Object.values(currentSingleResult.categories)} />
+                                {/* Summary Table (MxToolbox Style) */}
+                                <div className="mt-8">
+                                    <ProblemSummaryTable
+                                        problems={cats.problems}
+                                        domain={currentSingleResult.domain}
+                                    />
+                                </div>
+
+                                {/* Problems Table (MxToolbox Parity - Detailed) */}
+                                <div className="mt-8">
+                                    <ProblemTable problems={cats.problems} />
+                                </div>
+
+                                {/* 3. Detailed List */}
+                                <TestList categories={orderedCategories} />
+                            </>
+                        );
+                    })()}
+
+
 
                 </div>
             )}
 
-            {/* BULK RESULTS TABLE */}
             {results.length > 0 && (
-                <div className="mt-12">
+                <div className="mt-16 pt-8 border-t border-gray-200">
                     <h3 className="text-lg font-bold text-gray-900 mb-4">Session History</h3>
                     <ResultTable results={results} />
                 </div>
