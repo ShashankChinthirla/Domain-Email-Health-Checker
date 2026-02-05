@@ -1,4 +1,4 @@
-import { promises as dns } from 'dns';
+import * as dns from './dns-cache';
 import { setServers } from 'dns';
 import * as tls from 'tls'; // Used ONLY for HTTPS (Port 443) Certificate Check
 import { checkDNSBL } from './dnsbl';
@@ -63,172 +63,176 @@ async function resolveTxtWithRetry(domain: string, retries = 2): Promise<string[
 
 // --- 1. DNS Tests (Expanded - Deep Analysis) ---
 async function runDNSTests(domain: string): Promise<TestResult[]> {
-    const tests: TestResult[] = [];
-
-    // Local DNS Control
-    tests.push({ name: 'Local DNS Resolver', status: 'Pass', info: 'Google/Cloudflare (Safe)', reason: 'Using trusted public resolvers (8.8.8.8, 1.1.1.1).', recommendation: 'No action needed.' });
-
-    // 1. CNAME at Root Check (RFC Violation)
-    // CNAMEs are not allowed at the domain apex because they conflict with SOA/NS/MX.
-    try {
-        const cnames = await dns.resolveCname(domain);
-        if (cnames.length > 0) {
-            tests.push({ name: 'Apex CNAME', status: 'Error', info: 'Present', reason: 'A CNAME record exists at the root domain, which violates RFC standards and breaks MX records.', recommendation: 'Remove the CNAME and use an A record (or ALIAS/ANAME if supported by your provider).' });
-        }
-    } catch {
-        // Good! No CNAME found (expected behavior for Root).
-        tests.push({ name: 'Apex CNAME', status: 'Pass', info: 'Not Found', reason: 'No CNAME record found at root domain (RFC Compliant).', recommendation: 'No action needed.' });
-    }
-
-    // 2. A Record & Private IP Check
-    try {
-        const a = await dns.resolve4(domain);
-        if (a.length > 0) {
-            tests.push({ name: 'DNS Record Published', status: 'Pass', info: 'Primary IP Found', reason: 'A DNS record exists for this domain.', recommendation: 'No action needed.' });
-            tests.push({ name: 'A Record Count', status: 'Pass', info: `${a.length} IP(s)`, reason: `Found ${a.length} IPv4 addresses.`, recommendation: 'Ensure these IPs are correct.' });
-
-            // Check for Private IPs (RFC1918)
-            const privateIps = a.filter(ip => isPrivateIP(ip));
-            if (privateIps.length > 0) {
-                tests.push({ name: 'Public IP Check', status: 'Error', info: 'Private IP Found', reason: `The IP ${privateIps[0]} is a private local network address (RFC1918). It is not reachable from the internet.`, recommendation: 'Change your A record to a public static IP.' });
-            } else {
-                tests.push({ name: 'Public IP Check', status: 'Pass', info: 'Valid Public IP', reason: 'All IPs appear to be valid public addresses.', recommendation: 'No action needed.' });
-            }
-
-        } else {
-            tests.push({ name: 'DNS Record Published', status: 'Error', info: 'No A Records', reason: 'The domain does not resolve to an IPv4 address.', recommendation: 'Add an A record pointing to your web server.' });
-        }
-    } catch {
-        tests.push({ name: 'DNS Record Published', status: 'Error', info: 'Failed', reason: 'DNS lookup failed entirely.', recommendation: 'Check your domain registrar settings.' });
-    }
-
-    // 3. MX Record & CNAME Checks
-    try {
-        const mxs = await dns.resolveMx(domain);
-        if (mxs.length > 0) {
-            tests.push({ name: 'MX Record Published', status: 'Pass', info: `${mxs.length} Records`, reason: 'Mail Exchange records found.', recommendation: 'No action needed.' });
-        }
-
-        const mxRecords = mxs.sort((a, b) => a.priority - b.priority).map(m => m.exchange);
-
-        // MX IP Resolution & CNAME Check
-        if (mxRecords.length > 0) {
-            const primaryMx = mxRecords[0];
-
-            // Check if MX points to CNAME (RFC Violation)
+    // Parallelize all independent DNS lookups
+    const [cnameRes, aRes, mxRes, nsRes, soaRes, caaRes] = await Promise.all([
+        // 1. CNAME Check
+        (async () => {
+            const t: TestResult[] = [];
             try {
-                const mxCnames = await dns.resolveCname(primaryMx);
-                if (mxCnames.length > 0) {
-                    tests.push({ name: 'MX Canonical Check', status: 'Warning', info: 'MX points to CNAME', reason: `The MX record ${primaryMx} points to a CNAME, which violates RFC 2181.`, recommendation: 'Point your MX record directly to an A record host.' });
+                const cnames = await dns.resolveCname(domain);
+                if (cnames.length > 0) {
+                    t.push({ name: 'Apex CNAME', status: 'Error', info: 'Present', reason: 'A CNAME record exists at the root domain, which violates RFC standards and breaks MX records.', recommendation: 'Remove the CNAME and use an A record (or ALIAS/ANAME if supported by your provider).' });
                 }
             } catch {
-                // Good, it's not a CNAME
-                tests.push({ name: 'MX Canonical Check', status: 'Pass', info: 'Standard Host', reason: 'MX record points to a canonical host (not a CNAME).', recommendation: 'No action needed.' });
+                t.push({ name: 'Apex CNAME', status: 'Pass', info: 'Not Found', reason: 'No CNAME record found at root domain (RFC Compliant).', recommendation: 'No action needed.' });
             }
+            return t;
+        })(),
 
+        // 2. A Record Check
+        (async () => {
+            const t: TestResult[] = [];
             try {
-                const ips = await dns.resolve4(primaryMx);
-                tests.push({ name: 'Primary MX Resolution', status: 'Pass', info: `${primaryMx} -> ${ips[0]}`, reason: 'Primary MX host resolves to an IP.', recommendation: 'No action needed.' });
-            } catch {
-                try {
-                    await dns.resolve6(primaryMx);
-                    tests.push({ name: 'Primary MX Resolution', status: 'Pass', info: `${primaryMx} -> IPv6`, reason: 'Primary MX host resolves to an IPv6 address.', recommendation: 'Ensure IPv4 is also supported for maximum compatibility.' });
-                } catch {
-                    tests.push({ name: 'Primary MX Resolution', status: 'Error', info: `Could not resolve ${primaryMx}`, reason: 'The mail server hostname does not exist.', recommendation: 'Fix the MX record or create the missing A record for the mail server.' });
+                const a = await dns.resolve4(domain);
+                if (a.length > 0) {
+                    t.push({ name: 'DNS Record Published', status: 'Pass', info: 'Primary IP Found', reason: 'A DNS record exists for this domain.', recommendation: 'No action needed.' });
+                    t.push({ name: 'A Record Count', status: 'Pass', info: `${a.length} IP(s)`, reason: `Found ${a.length} IPv4 addresses.`, recommendation: 'Ensure these IPs are correct.' });
+
+                    const privateIps = a.filter(ip => isPrivateIP(ip));
+                    if (privateIps.length > 0) {
+                        t.push({ name: 'Public IP Check', status: 'Error', info: 'Private IP Found', reason: `The IP ${privateIps[0]} is a private local network address (RFC1918). It is not reachable from the internet.`, recommendation: 'Change your A record to a public static IP.' });
+                    } else {
+                        t.push({ name: 'Public IP Check', status: 'Pass', info: 'Valid Public IP', reason: 'All IPs appear to be valid public addresses.', recommendation: 'No action needed.' });
+                    }
+                } else {
+                    t.push({ name: 'DNS Record Published', status: 'Error', info: 'No A Records', reason: 'The domain does not resolve to an IPv4 address.', recommendation: 'Add an A record pointing to your web server.' });
                 }
-            }
-        }
-    } catch {
-        tests.push({ name: 'MX Record Published', status: 'Error', info: 'Missing', reason: 'No MX records found.', recommendation: 'You cannot receive email without MX records.' });
-    }
-
-    // 4. NS Record (Glue & Redundancy)
-    try {
-        const ns = await dns.resolveNs(domain);
-        tests.push({ name: 'NS Record Published', status: 'Pass', info: `${ns.length} Nameservers`, reason: 'Nameservers are configured.', recommendation: 'No action needed.' });
-
-        if (ns.length >= 2) {
-            tests.push({ name: 'NS Redundancy', status: 'Pass', info: 'Sufficient (2+)', reason: 'Multiple nameservers provide redundancy.', recommendation: 'No action needed.' });
-        } else {
-            tests.push({ name: 'NS Redundancy', status: 'Warning', info: 'Single Point of Failure (1 NS)', reason: 'Only one nameserver is listed.', recommendation: 'Add at least one backup nameserver.' });
-        }
-
-        // Glue Check (Do the NS names resolve?)
-        let glueFailures = 0;
-        for (const n of ns) {
-            try {
-                await dns.resolve4(n);
             } catch {
-                glueFailures++;
+                t.push({ name: 'DNS Record Published', status: 'Error', info: 'Failed', reason: 'DNS lookup failed entirely.', recommendation: 'Check your domain registrar settings.' });
             }
-        }
-        if (glueFailures === 0) {
-            tests.push({ name: 'NS Glue Validity', status: 'Pass', info: 'Resolvable', reason: 'All nameserver hostnames resolve to IPs.', recommendation: 'No action needed.' });
-        } else {
-            tests.push({ name: 'NS Glue Validity', status: 'Warning', info: 'Unresolvable NS', reason: 'One or more nameservers could not be resolved.', recommendation: 'Check your nameserver hostnames.' });
-        }
+            return t;
+        })(),
 
-    } catch {
-        tests.push({ name: 'NS Record Published', status: 'Error', info: 'Missing', reason: 'No Nameservers found.', recommendation: 'Configure nameservers at your registrar.' });
-    }
+        // 3. MX Record Check
+        (async () => {
+            const t: TestResult[] = [];
+            try {
+                const mxs = await dns.resolveMx(domain);
+                if (mxs.length > 0) {
+                    t.push({ name: 'MX Record Published', status: 'Pass', info: `${mxs.length} Records`, reason: 'Mail Exchange records found.', recommendation: 'No action needed.' });
+                }
 
-    // 5. SOA Record (RFC Compliance)
-    try {
-        const soa = await dns.resolveSoa(domain);
-        tests.push({ name: 'SOA Record Published', status: 'Pass', info: 'Present', reason: 'Start of Authority record found.', recommendation: 'No action needed.' });
-        tests.push({ name: 'SOA Primary NS', status: 'Pass', info: soa.nsname, reason: 'Primary nameserver defined in SOA.', recommendation: 'No action needed.' });
-        tests.push({ name: 'SOA RNAME', status: 'Pass', info: soa.hostmaster, reason: 'Responsible person email defined.', recommendation: 'No action needed.' });
+                const mxRecords = mxs.sort((a, b) => a.priority - b.priority).map(m => m.exchange);
 
-        // Serial Check (Strict YYYYMMDDnn)
-        const serialStr = soa.serial.toString();
-        // Regex for YYYYMMDDnn where YYYY=2020-2099, MM=01-12, DD=01-31, nn=00-99
-        const serialRegex = /^20[2-9]\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{2}$/;
+                if (mxRecords.length > 0) {
+                    const primaryMx = mxRecords[0];
+                    try {
+                        const mxCnames = await dns.resolveCname(primaryMx);
+                        if (mxCnames.length > 0) {
+                            t.push({ name: 'MX Canonical Check', status: 'Warning', info: 'MX points to CNAME', reason: `The MX record ${primaryMx} points to a CNAME, which violates RFC 2181.`, recommendation: 'Point your MX record directly to an A record host.' });
+                        }
+                    } catch {
+                        t.push({ name: 'MX Canonical Check', status: 'Pass', info: 'Standard Host', reason: 'MX record points to a canonical host (not a CNAME).', recommendation: 'No action needed.' });
+                    }
 
-        if (serialRegex.test(serialStr)) {
-            tests.push({ name: 'SOA Serial Number', status: 'Pass', info: `${soa.serial} (Format OK)`, reason: 'Serial number follows standard YYYYMMDDnn format.', recommendation: 'No action needed.', host: domain, result: 'SOA Serial Format Valid' });
-        } else {
-            tests.push({ name: 'SOA Serial Number', status: 'Warning', info: `${soa.serial} (Format Weak)`, reason: 'Serial does not match recommended YYYYMMDDnn format (e.g., 2024010101).', recommendation: 'Update serial to YYYYMMDDnn standard.', host: domain, result: 'SOA Serial Format Weak' });
-        }
+                    try {
+                        const ips = await dns.resolve4(primaryMx);
+                        t.push({ name: 'Primary MX Resolution', status: 'Pass', info: `${primaryMx} -> ${ips[0]}`, reason: 'Primary MX host resolves to an IP.', recommendation: 'No action needed.' });
+                    } catch {
+                        try {
+                            await dns.resolve6(primaryMx);
+                            t.push({ name: 'Primary MX Resolution', status: 'Pass', info: `${primaryMx} -> IPv6`, reason: 'Primary MX host resolves to an IPv6 address.', recommendation: 'Ensure IPv4 is also supported for maximum compatibility.' });
+                        } catch {
+                            t.push({ name: 'Primary MX Resolution', status: 'Error', info: `Could not resolve ${primaryMx}`, reason: 'The mail server hostname does not exist.', recommendation: 'Fix the MX record or create the missing A record for the mail server.' });
+                        }
+                    }
+                }
+            } catch {
+                t.push({ name: 'MX Record Published', status: 'Error', info: 'Missing', reason: 'No MX records found.', recommendation: 'You cannot receive email without MX records.' });
+            }
+            return t;
+        })(),
 
-        // Refresh (1200 - 43200)
-        if (soa.refresh >= 1200 && soa.refresh <= 43200) {
-            tests.push({ name: 'SOA Refresh Value', status: 'Pass', info: `${soa.refresh} (RFC OK)`, reason: 'Refresh interval is within RFC recommended range.', recommendation: 'No action needed.' });
-        } else {
-            tests.push({ name: 'SOA Refresh Value', status: 'Warning', info: `${soa.refresh} (Non-Standard)`, reason: 'Refresh interval is outside RFC optimal range (1200-43200).', recommendation: 'Adjust refresh value.' });
-        }
+        // 4. NS Record Check
+        (async () => {
+            const t: TestResult[] = [];
+            try {
+                const ns = await dns.resolveNs(domain);
+                t.push({ name: 'NS Record Published', status: 'Pass', info: `${ns.length} Nameservers`, reason: 'Nameservers are configured.', recommendation: 'No action needed.' });
 
-        // Retry (180 - 2419200)
-        if (soa.retry >= 180 && soa.retry <= 2419200) {
-            tests.push({ name: 'SOA Retry Value', status: 'Pass', info: `${soa.retry} (RFC OK)`, reason: 'Retry interval is within RFC recommended range.', recommendation: 'No action needed.' });
-        } else {
-            tests.push({ name: 'SOA Retry Value', status: 'Warning', info: `${soa.retry} (Non-Standard)`, reason: 'Retry interval is outside RFC optimal range.', recommendation: 'Adjust retry value.' });
-        }
+                if (ns.length >= 2) {
+                    t.push({ name: 'NS Redundancy', status: 'Pass', info: 'Sufficient (2+)', reason: 'Multiple nameservers provide redundancy.', recommendation: 'No action needed.' });
+                } else {
+                    t.push({ name: 'NS Redundancy', status: 'Warning', info: 'Single Point of Failure (1 NS)', reason: 'Only one nameserver is listed.', recommendation: 'Add at least one backup nameserver.' });
+                }
 
-        // Expire (Strict: 604800 - 1209600 aka 1-2 weeks)
-        // User requested strictness here.
-        if (soa.expire >= 604800 && soa.expire <= 1209600) {
-            tests.push({ name: 'SOA Expire Value', status: 'Pass', info: `${soa.expire} (Strict OK)`, reason: 'Expire interval is within recommended 1-2 week range.', recommendation: 'No action needed.' });
-        } else {
-            tests.push({ name: 'SOA Expire Value', status: 'Warning', info: `${soa.expire} (Adjust)`, reason: 'Expire value is outside the strict recommended range (1-2 weeks). Too long can cause stale data persistence.', recommendation: 'Set expire to between 604800 and 1209600.' });
-        }
+                // Glue Check - Parallelize
+                let glueFailures = 0;
+                await Promise.all(ns.map(async (n) => {
+                    try { await dns.resolve4(n); } catch { glueFailures++; }
+                }));
 
-        // Minimum TTL
-        tests.push({ name: 'SOA Minimum TTL', status: 'Pass', info: `${soa.minttl}`, reason: 'Minimum TTL is defined.', recommendation: 'No action needed.' });
+                if (glueFailures === 0) {
+                    t.push({ name: 'NS Glue Validity', status: 'Pass', info: 'Resolvable', reason: 'All nameserver hostnames resolve to IPs.', recommendation: 'No action needed.' });
+                } else {
+                    t.push({ name: 'NS Glue Validity', status: 'Warning', info: 'Unresolvable NS', reason: 'One or more nameservers could not be resolved.', recommendation: 'Check your nameserver hostnames.' });
+                }
+            } catch {
+                t.push({ name: 'NS Record Published', status: 'Error', info: 'Missing', reason: 'No Nameservers found.', recommendation: 'Configure nameservers at your registrar.' });
+            }
+            return t;
+        })(),
 
-    } catch {
-        tests.push({ name: 'SOA Record Published', status: 'Warning', info: 'Missing', reason: 'SOA record not found.', recommendation: 'Ensure your zone file is valid.' });
-    }
+        // 5. SOA Record Check
+        (async () => {
+            const t: TestResult[] = [];
+            try {
+                const soa = await dns.resolveSoa(domain);
+                t.push({ name: 'SOA Record Published', status: 'Pass', info: 'Present', reason: 'Start of Authority record found.', recommendation: 'No action needed.' });
+                t.push({ name: 'SOA Primary NS', status: 'Pass', info: soa.nsname, reason: 'Primary nameserver defined in SOA.', recommendation: 'No action needed.' });
+                t.push({ name: 'SOA RNAME', status: 'Pass', info: soa.hostmaster, reason: 'Responsible person email defined.', recommendation: 'No action needed.' });
 
-    // CAA Record (Security)
-    try {
-        const caa = await dns.resolveCaa(domain);
-        tests.push({ name: 'CAA Record', status: 'Pass', info: `${caa.length} record(s)`, reason: 'CAA records prevent unauthorized SSL issuance.', recommendation: 'No action needed.' });
-    } catch (err: any) {
-        // NODATA (code 0) is Pass (Optional), ENOTFOUND is Pass
-        tests.push({ name: 'CAA Record', status: 'Pass', info: 'Not published (Optional)', reason: 'No CAA records found.', recommendation: 'Consider adding CAA records for better security.' });
-    }
+                const serialStr = soa.serial.toString();
+                const serialRegex = /^20[2-9]\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{2}$/;
 
-    return tests;
+                if (serialRegex.test(serialStr)) {
+                    t.push({ name: 'SOA Serial Number', status: 'Pass', info: `${soa.serial} (Format OK)`, reason: 'Serial number follows standard YYYYMMDDnn format.', recommendation: 'No action needed.', host: domain, result: 'SOA Serial Format Valid' });
+                } else {
+                    t.push({ name: 'SOA Serial Number', status: 'Warning', info: `${soa.serial} (Format Weak)`, reason: 'Serial does not match recommended YYYYMMDDnn format (e.g., 2024010101).', recommendation: 'Update serial to YYYYMMDDnn standard.', host: domain, result: 'SOA Serial Format Weak' });
+                }
+
+                if (soa.refresh >= 1200 && soa.refresh <= 43200) {
+                    t.push({ name: 'SOA Refresh Value', status: 'Pass', info: `${soa.refresh} (RFC OK)`, reason: 'Refresh interval is within RFC recommended range.', recommendation: 'No action needed.' });
+                } else {
+                    t.push({ name: 'SOA Refresh Value', status: 'Warning', info: `${soa.refresh} (Non-Standard)`, reason: 'Refresh interval is outside RFC optimal range (1200-43200).', recommendation: 'Adjust refresh value.' });
+                }
+
+                if (soa.retry >= 180 && soa.retry <= 2419200) {
+                    t.push({ name: 'SOA Retry Value', status: 'Pass', info: `${soa.retry} (RFC OK)`, reason: 'Retry interval is within RFC recommended range.', recommendation: 'No action needed.' });
+                } else {
+                    t.push({ name: 'SOA Retry Value', status: 'Warning', info: `${soa.retry} (Non-Standard)`, reason: 'Retry interval is outside RFC optimal range.', recommendation: 'Adjust retry value.' });
+                }
+
+                if (soa.expire >= 604800 && soa.expire <= 1209600) {
+                    t.push({ name: 'SOA Expire Value', status: 'Pass', info: `${soa.expire} (Strict OK)`, reason: 'Expire interval is within recommended 1-2 week range.', recommendation: 'No action needed.' });
+                } else {
+                    t.push({ name: 'SOA Expire Value', status: 'Warning', info: `${soa.expire} (Adjust)`, reason: 'Expire value is outside the strict recommended range (1-2 weeks). Too long can cause stale data persistence.', recommendation: 'Set expire to between 604800 and 1209600.' });
+                }
+
+                t.push({ name: 'SOA Minimum TTL', status: 'Pass', info: `${soa.minttl}`, reason: 'Minimum TTL is defined.', recommendation: 'No action needed.' });
+            } catch {
+                t.push({ name: 'SOA Record Published', status: 'Warning', info: 'Missing', reason: 'SOA record not found.', recommendation: 'Ensure your zone file is valid.' });
+            }
+            return t;
+        })(),
+
+        // 6. CAA Record Check
+        (async () => {
+            const t: TestResult[] = [];
+            try {
+                const caa = await dns.resolveCaa(domain);
+                t.push({ name: 'CAA Record', status: 'Pass', info: `${caa.length} record(s)`, reason: 'CAA records prevent unauthorized SSL issuance.', recommendation: 'No action needed.' });
+            } catch (err: any) {
+                t.push({ name: 'CAA Record', status: 'Pass', info: 'Not published (Optional)', reason: 'No CAA records found.', recommendation: 'Consider adding CAA records for better security.' });
+            }
+            return t;
+        })()
+    ]);
+
+    // Local DNS Resolver check always first
+    const resolverTest: TestResult = { name: 'Local DNS Resolver', status: 'Pass', info: 'Google/Cloudflare (Safe)', reason: 'Using trusted public resolvers (8.8.8.8, 1.1.1.1).', recommendation: 'No action needed.' };
+
+    return [resolverTest, ...cnameRes, ...aRes, ...mxRes, ...nsRes, ...soaRes, ...caaRes];
 }
 
 
@@ -849,23 +853,31 @@ async function runWebServerTests(domain: string): Promise<TestResult[]> {
 // --- Main Runner Orchestrator ---
 export async function runFullHealthCheck(domain: string): Promise<FullHealthReport> {
 
-    // 1. Run DNS First to get MX for Blacklist
-    const dnsResults = await runDNSTests(domain);
+    // 1. Trigger all independent tests immediately (Parallel Execution)
+    const pDNS = runDNSTests(domain);
+    const pSPF = runSPFTests(domain);
+    const pDMARC = runDMARCTests(domain);
+    const pDKIM = runDKIMTests(domain);
+    const pWeb = runWebServerTests(domain);
 
-    // Extract MX records
-    let mxRecords: string[] = [];
-    try {
-        const mxs = await dns.resolveMx(domain);
-        mxRecords = mxs.sort((a, b) => a.priority - b.priority).map(m => m.exchange);
-    } catch { }
+    // 2. Resolve MX independently for Blacklist (Critical Path for speed)
+    // We don't wait for pDNS to finish to get MX records for blacklist.
+    // We run a dedicated MX lookup to unblock blacklist check ASAP.
+    const mxLookupForBlacklist = dns.resolveMx(domain)
+        .then(mxs => mxs.sort((a, b) => a.priority - b.priority).map(m => m.exchange))
+        .catch(() => [] as string[]);
 
-    // 2. Run All Suites in Parallel
-    const [spfRes, dmarcRes, dkimRes, blacklistRes, webRes] = await Promise.all([
-        runSPFTests(domain),
-        runDMARCTests(domain),
-        runDKIMTests(domain),
-        runBlacklistTestsWithMX(mxRecords),
-        runWebServerTests(domain)
+    const pBlacklist = mxLookupForBlacklist.then(mxs => runBlacklistTestsWithMX(mxs));
+
+    // 3. Await all
+    const [dnsResults, spfRes, dmarcRes, dkimRes, webRes, blacklistRes, mxRecords] = await Promise.all([
+        pDNS,
+        pSPF,
+        pDMARC,
+        pDKIM,
+        pWeb,
+        pBlacklist,
+        mxLookupForBlacklist
     ]);
 
 

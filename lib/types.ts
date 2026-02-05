@@ -23,6 +23,7 @@ export interface CategoryResult {
 
 export interface FullHealthReport {
     domain: string;
+    score: number;
     rawSpf: string | null;
     rawDmarc: string | null;
     dmarcPolicy: string | null;

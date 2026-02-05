@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FullHealthReport } from '@/lib/types';
 
@@ -8,67 +8,78 @@ interface VerdictBannerProps {
 }
 
 export function VerdictBanner({ report }: VerdictBannerProps) {
-    // Safety checks
-    if (!report || !report.categories || !report.categories.problems) {
-        return null;
-    }
+    if (!report || !report.categories || !report.categories.problems) return null;
 
-    const problems = report.categories.problems.tests || [];
-    const errorCount = problems.filter(p => p.status === 'Error').length;
-    const warningCount = problems.filter(p => p.status === 'Warning').length;
+    const problemTests = report.categories.problems.tests || [];
+    const errorCount = problemTests.filter(p => p.status === 'Error').length;
+    const isSecure = errorCount === 0;
 
-    // Strict verdict logic
-    const hasErrors = errorCount > 0;
-    const hasWarnings = warningCount > 0;
+    // Content Strategy: Plain English, No Technical Jargon in the Header
+    const content = isSecure ? {
+        title: "Domain is Secure",
+        desc: "Your email configuration is safe. No critical issues found.",
+        borderColor: "border-emerald-500",
+        iconColor: "text-emerald-500",
+        Icon: ShieldCheck
+    } : {
+        title: "Domain is At Risk",
+        desc: "Attackers can likely spoof emails from your domain.",
+        borderColor: "border-rose-500",
+        iconColor: "text-rose-500",
+        Icon: ShieldAlert
+    };
 
-    let bgClass = "bg-green-50 border-green-200 text-green-900";
-    let iconClass = "bg-green-100 text-green-600";
-    let Icon = CheckCircle2;
-    let title = "All Systems Operational";
-    let message = "No critical issues detected. Your domain health is excellent.";
-
-    if (hasErrors) {
-        bgClass = "bg-red-50 border-red-200 text-red-900";
-        iconClass = "bg-red-100 text-red-600";
-        Icon = XCircle;
-        title = "Action Required";
-        message = `${errorCount} critical issue${errorCount === 1 ? '' : 's'} detected. Immediate attention required.`;
-    } else if (hasWarnings) {
-        bgClass = "bg-yellow-50 border-yellow-200 text-yellow-900";
-        iconClass = "bg-yellow-100 text-yellow-600";
-        Icon = AlertTriangle;
-        title = "Warnings Detected";
-        message = `${warningCount} warning${warningCount === 1 ? '' : 's'} detected. Review recommendations to improve health.`;
-    }
+    const statusStyles = isSecure ? {
+        container: "bg-gradient-to-br from-emerald-950/40 to-emerald-900/20 border-emerald-500/20 shadow-[0_0_40px_-10px_rgba(16,185,129,0.1)]",
+        iconBox: "bg-emerald-500/10 text-emerald-500",
+        title: "text-emerald-400",
+        badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+        pulse: "bg-emerald-500"
+    } : {
+        container: "bg-gradient-to-br from-rose-950/40 to-rose-900/20 border-rose-500/20 shadow-[0_0_40px_-10px_rgba(244,63,94,0.1)]",
+        iconBox: "bg-rose-500/10 text-rose-500",
+        title: "text-rose-400",
+        badge: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+        pulse: "bg-rose-500"
+    };
 
     return (
         <div className={cn(
-            "rounded-xl p-6 mb-8 border shadow-sm flex items-start sm:items-center justify-between gap-4",
-            bgClass
+            "w-full rounded-3xl border backdrop-blur-xl p-6 relative overflow-hidden group hover:scale-[1.005] transition-all duration-500",
+            statusStyles.container
         )}>
-            <div className="flex items-center gap-4">
-                <div className={cn("p-3 rounded-full flex-shrink-0", iconClass)}>
-                    <Icon className="w-8 h-8" />
+            {/* Subtle Noise / Highlight Overlay */}
+            <div className="absolute inset-0 bg-white/[0.02] pointer-events-none" />
+
+            <div className="relative flex flex-col md:flex-row items-center gap-6">
+
+                {/* ICON BOX */}
+                <div className={cn("p-4 rounded-2xl shrink-0 border border-white/5", statusStyles.iconBox)}>
+                    <content.Icon className="w-8 h-8" strokeWidth={1.5} />
                 </div>
-                <div>
-                    <h2 className="text-xl font-bold tracking-tight">{title}</h2>
-                    <p className={cn("text-sm mt-1 opacity-90")}>{message}</p>
+
+                {/* TEXT CONTENT */}
+                <div className="flex-1 text-center md:text-left space-y-1">
+                    <h2 className={cn("text-xl font-bold tracking-tight", statusStyles.title)}>
+                        {content.title}
+                    </h2>
+                    <p className="text-white/60 text-base font-medium leading-relaxed">
+                        {content.desc}
+                    </p>
+                </div>
+
+                {/* ACTION / STATUS BADGE */}
+                <div className={cn(
+                    "px-5 py-2 rounded-full border text-xs font-bold uppercase tracking-widest flex items-center gap-2.5",
+                    statusStyles.badge
+                )}>
+                    <span className="relative flex h-2 w-2">
+                        <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", statusStyles.pulse)}></span>
+                        <span className={cn("relative inline-flex rounded-full h-2 w-2", statusStyles.pulse)}></span>
+                    </span>
+                    {isSecure ? "System Secure" : "Action Required"}
                 </div>
             </div>
-
-            {/* Action Button */}
-            {(hasErrors || hasWarnings) && (
-                <div className="hidden sm:block">
-                    <span className={cn(
-                        "inline-flex items-center px-4 py-2 rounded-lg border text-sm font-semibold shadow-sm",
-                        hasErrors
-                            ? "bg-white/60 border-red-200 text-red-800"
-                            : "bg-white/60 border-yellow-200 text-yellow-800"
-                    )}>
-                        View Problems ↓
-                    </span>
-                </div>
-            )}
         </div>
     );
 }

@@ -1,64 +1,124 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ResultTable } from './ResultTable';
-import { ProblemTable } from './ProblemTable';
-import { ProblemSummaryTable } from './ProblemSummaryTable';
+import { BulkResultsTable } from './BulkResultsTable';
+import { ProblemsSection } from './ProblemsSection';
 import { FullHealthReport } from '@/lib/types';
 import { HealthSummary } from './HealthCards';
-import { RawRecord } from './RawRecord';
 import { TestList } from './TestList';
 import { VerdictBanner } from './VerdictBanner';
 import { TechnicalConfig } from './TechnicalConfig';
+import { PrimaryAction } from './PrimaryAction';
+import { Navbar } from './Navbar';
+import { Hero } from './Hero';
 import * as XLSX from 'xlsx';
-import { Download, Upload, Search, Loader2 } from 'lucide-react';
+import { Download, Upload, Search, ShieldCheck, Loader2, ArrowRight, ChevronDown, ChevronUp, CheckCircle2, CircleDashed } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+// Defined outside to be stable
+const SCAN_STEPS = [
+    "Establishing Secure Connection",
+    "Resolving DNS Records",
+    "Validating MX Configuration",
+    "Analyzing SPF Alignment",
+    "Decrypting DKIM Selectors",
+    "Verifying DMARC Policy",
+    "Checking Global Blacklists",
+    "Compiling Security Report"
+];
 
 export function DomainChecker() {
     const [domainInput, setDomainInput] = useState('');
     const [loading, setLoading] = useState(false);
+
+    // Tracks the current step index (0 to SCAN_STEPS.length - 1)
+    const [scanIndex, setScanIndex] = useState(0);
+
     const [results, setResults] = useState<FullHealthReport[]>([]);
     const [currentSingleResult, setCurrentSingleResult] = useState<FullHealthReport | null>(null);
     const [inputError, setInputError] = useState<string | null>(null);
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const resultsRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const checkDomain = async (domain: string) => {
+    const [bulkResults, setBulkResults] = useState<FullHealthReport[]>([]);
+    const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+    const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+
+    const fetchDomainHealth = async (domain: string) => {
+        // Sanitize domain
+        const cleanDomain = domain.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '').trim();
+
         try {
             const response = await fetch('/api/check-domain', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ domain }),
+                body: JSON.stringify({ domain: cleanDomain }),
             });
-
             const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to check domain');
-            }
-
+            if (!response.ok) throw new Error(data.error || 'Failed');
             return data as FullHealthReport;
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
+            // If it's a manual check, show the error in UI
+            if (error.message) setInputError(error.message);
             return null;
         }
     };
 
+    const checkDomain = async (domain: string) => {
+        return await fetchDomainHealth(domain); // Use common helper
+    };
+
     const handleManualCheck = async () => {
         if (!domainInput.trim()) return;
+        window.scrollTo({ top: 0, behavior: 'instant' });
         setLoading(true);
         setInputError(null);
         setCurrentSingleResult(null);
+        setBulkResults([]); // Clear bulk
+        setShowAdvanced(false);
+        setScanIndex(0);
 
-        await new Promise(r => setTimeout(r, 100));
+        const stepDuration = 600;
+        const progressInterval = setInterval(() => {
+            setScanIndex(prev => (prev < SCAN_STEPS.length - 1 ? prev + 1 : prev));
+        }, stepDuration);
 
-        const result = await checkDomain(domainInput);
-        if (result) {
-            setResults((prev) => [...prev, result]);
-            setCurrentSingleResult(result);
-            setDomainInput('');
-        } else {
-            setInputError('Could not retrieve data for this domain.');
+        try {
+            const result = await fetchDomainHealth(domainInput);
+            clearInterval(progressInterval);
+            setScanIndex(SCAN_STEPS.length - 1);
+
+            setTimeout(() => {
+                if (result) {
+                    setResults((prev) => [...prev, result]);
+                    setCurrentSingleResult(result);
+                    setDomainInput('');
+                    setLoading(false);
+                } else {
+                    setInputError('Could not retrieve data for this domain.');
+                    setLoading(false);
+                }
+            }, 600);
+        } catch (e) {
+            clearInterval(progressInterval);
+            setLoading(false);
         }
-        setLoading(false);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') handleManualCheck();
+    };
+
+    const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+    const scrollToCategory = (category: string) => {
+        const id = `cat-${category.toLowerCase().replace(/ /g, '-')}`;
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setActiveCategory(category);
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,257 +127,302 @@ export function DomainChecker() {
 
         const reader = new FileReader();
         reader.onload = async (evt) => {
+            setLoading(true);
+            setIsBulkProcessing(true);
+            setCurrentSingleResult(null); // Clear single view
+            setBulkResults([]); // Reset
+
             try {
                 const bstr = evt.target?.result;
                 const workbook = XLSX.read(bstr, { type: 'binary' });
-                const sheetName = workbook.SheetNames[0];
-                const ws = workbook.Sheets[sheetName];
+                const ws = workbook.Sheets[workbook.SheetNames[0]];
                 const data = XLSX.utils.sheet_to_json(ws) as any[];
 
-                const domainsToCheck: string[] = [];
-                data.forEach((row) => {
-                    const key = Object.keys(row).find(k => k.toLowerCase() === 'domain');
-                    if (key && row[key]) {
-                        domainsToCheck.push(row[key]);
+                const domains = data.map((row) => row['Domain'] || row['domain']).filter(Boolean);
+                setBulkProgress({ current: 0, total: domains.length });
+
+                const CONCURRENCY_LIMIT = 25;
+                let activeCount = 0;
+                let currentIndex = 0;
+                const total = domains.length;
+
+                // Simple concurrency queue
+                const processNext = async () => {
+                    if (currentIndex >= total) return;
+
+                    const index = currentIndex++;
+                    const domain = domains[index];
+                    activeCount++;
+
+                    try {
+                        const result = await fetchDomainHealth(domain);
+                        if (result) {
+                            setBulkResults(prev => [...prev, result]);
+                        }
+                    } catch (err) {
+                        console.error(`Failed to process ${domain}`, err);
+                    } finally {
+                        setBulkProgress(prev => ({ ...prev, current: prev.current + 1 }));
+                        activeCount--;
+                        // Trigger next if available
+                        if (currentIndex < total) {
+                            await processNext();
+                        }
                     }
+                };
+
+                // Start initial batch to fill the pipe
+                const initialPromises = [];
+                for (let i = 0; i < Math.min(CONCURRENCY_LIMIT, total); i++) {
+                    initialPromises.push(processNext());
+                }
+
+                // Wait for all "threads" to eventually finish
+                // We wrap the initial promises in Promise.all to ensure the main thread waits
+                // But note: processNext recursively chains itself, so we need to track completion differently or just await the initial set
+                // Actually, waiting for initialPromises alone isn't enough because they resolve when the *first* item finishes (if we used simple recursion without tracking)
+                // A better pattern for "wait until all done":
+
+                await new Promise<void>((resolve) => {
+                    const checkDone = setInterval(() => {
+                        if (currentIndex >= total && activeCount === 0) {
+                            clearInterval(checkDone);
+                            resolve();
+                        }
+                    }, 100);
                 });
 
-                if (domainsToCheck.length === 0) {
-                    setInputError('No "domain" column found in the uploaded file.');
-                    return;
-                }
-
-                setLoading(true);
-                setCurrentSingleResult(null);
-
-                for (const d of domainsToCheck) {
-                    const res = await checkDomain(d);
-                    if (res) {
-                        setResults((prev) => [...prev, res]);
-                    }
-                }
+            } catch (e) {
+                setInputError('Upload Failed: Ensure Excel has a "Domain" column.');
+            } finally {
                 setLoading(false);
-                if (fileInputRef.current) fileInputRef.current.value = '';
-
-            } catch (err) {
-                console.error(err);
-                setInputError('Error parsing Excel file.');
-                setLoading(false);
+                setIsBulkProcessing(false);
             }
         };
         reader.readAsBinaryString(file);
     };
 
-    const generateUpdatedSpf = (raw: string | null) => {
-        if (!raw) return 'v=spf1 a mx ~all';
-        return raw.replace(/-all/g, '~all').replace(/\?all/g, '~all');
-    };
-
+    // Helper generators
+    const generateUpdatedSpf = (raw: string | null) => raw ? raw.replace(/-all|\?all/g, '~all') : 'v=spf1 a mx ~all';
     const generateUpdatedDmarc = (raw: string | null, domain: string) => {
-        let rua = '';
+        let rua = `mailto:dmarc-reports@${domain}`;
         let ruf = '';
         if (raw) {
-            const ruaMatch = raw.match(/rua=([^;]+)/i);
-            const rufMatch = raw.match(/ruf=([^;]+)/i);
-            if (ruaMatch) rua = ruaMatch[1].trim();
-            if (rufMatch) ruf = rufMatch[1].trim();
-        } else {
-            rua = `mailto:dmarc-reports@${domain}`;
-            ruf = `mailto:dmarc-reports@${domain}`;
+            const mRua = raw.match(/rua=([^;]+)/i);
+            if (mRua) rua = mRua[1].trim();
+
+            const mRuf = raw.match(/ruf=([^;]+)/i);
+            if (mRuf) ruf = ` ruf=${mRuf[1].trim()};`;
         }
-        let rec = 'v=DMARC1; p=reject; sp=reject; pct=100;';
-        if (rua) rec += ` rua=${rua};`;
-        if (ruf) rec += ` ruf=${ruf};`;
-        rec += ' adkim=r; aspf=r;';
-        return rec;
+        return `v=DMARC1; p=reject; sp=reject; pct=100; rua=${rua};${ruf} adkim=r; aspf=r;`;
     };
 
-    const exportToExcel = () => {
-        if (results.length === 0) return;
-        const exportData = results.map(r => {
-            const healthCheckLines: string[] = [];
+    // Handle Browser Back Button
+    useEffect(() => {
+        const handlePopState = () => {
+            // If user hits back, we return to list view (set single result null)
+            setCurrentSingleResult(null);
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, []);
 
-            const addCatStats = (name: string, stats: { errors: number, warnings: number, passed: number }) => {
-                if (healthCheckLines.length > 0) healthCheckLines.push('');
-                healthCheckLines.push(`[ ${name.toUpperCase()} ]`);
-                if (stats.errors > 0) healthCheckLines.push(`• ${stats.errors} Errors`);
-                if (stats.warnings > 0) healthCheckLines.push(`• ${stats.warnings} Warnings`);
-                healthCheckLines.push(`• ${stats.passed} Passed`);
-            };
-
-            addCatStats('Problems', r.categories.problems.stats);
-            addCatStats('DNS', r.categories.dns.stats);
-            addCatStats('SPF', r.categories.spf.stats);
-            addCatStats('DMARC', r.categories.dmarc.stats);
-            addCatStats('DKIM', r.categories.dkim.stats);
-            addCatStats('Blacklist', r.categories.blacklist.stats);
-            addCatStats('Web Server', r.categories.webServer.stats);
-
-            return {
-                'Domain': r.domain,
-                'SPF [Full]': r.rawSpf || 'Missing',
-                'Updated SPF [Full]': generateUpdatedSpf(r.rawSpf),
-                'DMARC [Full]': r.rawDmarc || 'Missing',
-                'Updated DMARC [Full]': generateUpdatedDmarc(r.rawDmarc, r.domain),
-                'Health Check': healthCheckLines.join('\n')
-            };
-        });
-
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        ws['!cols'] = [{ wch: 25 }, { wch: 50 }, { wch: 50 }, { wch: 50 }, { wch: 50 }, { wch: 50 }];
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Detailed Results');
-        XLSX.writeFile(wb, 'domain-health-deep-analysis.xlsx');
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') handleManualCheck();
-    };
-
-    const scrollToCategory = (category: string) => {
-        const id = `cat-${category.toLowerCase().replace(/ /g, '-')}`;
-        const el = document.getElementById(id);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const handleSelectDomain = (result: FullHealthReport) => {
+        window.history.pushState({ view: 'details' }, '', `#${result.domain}`);
+        setCurrentSingleResult(result);
+        window.scrollTo({ top: 0, behavior: 'instant' });
     };
 
     return (
-        <div className="max-w-5xl mx-auto space-y-12 pb-24">
+        <div className="min-h-screen relative bg-black font-sans selection:bg-white/20">
 
-            <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-                <label className="block text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">
-                    Analyze Domain
-                </label>
-                <div className="flex flex-col sm:flex-row gap-4">
-                    <div className="relative flex-grow">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <Search className="h-5 w-5 text-gray-400" />
+            <Navbar
+                searchState={currentSingleResult ? {
+                    value: domainInput,
+                    onChange: setDomainInput,
+                    onSubmit: handleManualCheck,
+                    loading: loading
+                } : undefined}
+            />
+
+            {/* --- TITANIUM ORBITAL LOADING OVERLAY --- */}
+            {loading && (
+                <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center overflow-hidden">
+                    {/* ... (Orbital Loading Content stays same, not repeating to save space) ... */}
+                    {/* Background Ambient Plasma */}
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white/5 via-transparent to-transparent opacity-50 animate-pulse" />
+
+                    {/* ORBITAL SYSTEM */}
+                    <div className="relative w-64 h-64 flex items-center justify-center mb-12">
+                        {/* Ring 1 - Outer (Slow Spin) */}
+                        <div className="absolute inset-0 border border-white/5 rounded-full animate-[spin_10s_linear_infinite]" />
+                        <div className="absolute inset-0 border-t border-white/20 rounded-full animate-[spin_8s_linear_infinite]" />
+
+                        {/* Ring 2 - Middle (Reverse Fast) */}
+                        <div className="absolute inset-8 border border-white/10 rounded-full" />
+                        <div className="absolute inset-8 border-r border-l border-white/30 rounded-full animate-[spin_3s_linear_infinite_reverse]" />
+
+                        {/* PROGRESS RING (SVG) */}
+                        <svg className="absolute inset-0 w-full h-full -rotate-90 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">
+                            {/* Track */}
+                            <circle cx="128" cy="128" r="120" stroke="rgba(255,255,255,0.05)" strokeWidth="2" fill="none" />
+                            {/* Fill */}
+                            <circle
+                                cx="128" cy="128" r="120"
+                                stroke="white"
+                                strokeWidth="4"
+                                fill="none"
+                                strokeLinecap="round"
+                                strokeDasharray="753" // 2 * pi * 120
+                                strokeDashoffset={753 - (753 * (isBulkProcessing ? (bulkProgress.current / Math.max(bulkProgress.total, 1)) : ((scanIndex + 1) / SCAN_STEPS.length)))}
+                                className="transition-all duration-300 ease-out"
+                            />
+                        </svg>
+
+                        {/* Ring 3 - Core (Pulse) */}
+                        <div className="absolute inset-20 bg-white/5 rounded-full backdrop-blur-md animate-pulse border border-white/20 flex items-center justify-center">
+                            <ShieldCheck className="w-8 h-8 text-white dropshadow-[0_0_10px_rgba(255,255,255,0.8)]" />
                         </div>
-                        <input
-                            type="text"
-                            className="block w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg leading-5 bg-gray-50 placeholder-gray-500 focus:outline-none focus:bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out text-base"
-                            placeholder="e.g. google.com"
-                            value={domainInput}
-                            onChange={(e) => setDomainInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                        />
-                    </div>
-                    <button
-                        onClick={handleManualCheck}
-                        disabled={loading || !domainInput}
-                        className="inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-75 transition-all shadow-md hover:shadow-lg"
-                    >
-                        {loading && domainInput ? <Loader2 className="animate-spin -ml-1 mr-2 h-5 w-5" /> : null}
-                        Check Domain
-                    </button>
-                </div>
-                {inputError && (
-                    <p className="mt-3 text-sm text-red-600 font-medium flex items-center">
-                        <Upload className="w-4 h-4 mr-1.5" />
-                        {inputError}
-                    </p>
-                )}
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-gray-100">
-                    <div className="flex items-center">
-                        <input type="file" ref={fileInputRef} accept=".xlsx, .xls" className="hidden" onChange={handleFileUpload} />
-                        <button onClick={() => fileInputRef.current?.click()} disabled={loading} className="text-gray-600 hover:text-gray-900 text-sm font-medium flex items-center transition-colors">
-                            <Upload className="w-4 h-4 mr-2" /> Upload Excel List
-                        </button>
-                    </div>
-                    {results.length > 0 && (
-                        <button onClick={exportToExcel} className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center transition-colors">
-                            <Download className="w-4 h-4 mr-2" /> Export Full Report (.xlsx)
-                        </button>
-                    )}
-                </div>
-            </div>
 
-            {loading && !domainInput && (
-                <div className="flex flex-col items-center justify-center py-12">
-                    <Loader2 className="h-10 w-10 animate-spin text-orange-500 mb-4" />
-                    <p className="text-lg text-gray-600 font-medium">Running deep analysis on domains...</p>
-                    <p className="text-sm text-gray-400">Checking DNSBLs, Mail Servers, and Security Policies</p>
+                        {/* Particle Satellites (Decorators) */}
+                        <div className="absolute top-0 left-1/2 w-1 h-1 bg-white rounded-full -translate-x-1/2 shadow-[0_0_10px_white]" />
+                        <div className="absolute bottom-0 left-1/2 w-1 h-1 bg-white rounded-full -translate-x-1/2 shadow-[0_0_10px_white]" />
+                    </div>
+
+                    {/* STATUS TYPOGRAPHY */}
+                    <div className="text-center z-10 space-y-4">
+                        {isBulkProcessing ? (
+                            <>
+                                <h2 className="text-4xl md:text-5xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/40 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                    BATCH PROCESSING
+                                </h2>
+                                <div className="flex flex-col items-center gap-2">
+                                    <p className="text-white font-mono text-lg font-bold">
+                                        ANALYZING DOMAIN {bulkProgress.current} OF {bulkProgress.total}
+                                    </p>
+                                </div>
+                            </>
+                        ) : (
+                            <h2 className="text-4xl md:text-5xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/40 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                {SCAN_STEPS[scanIndex] || "INITIALIZING..."}
+                            </h2>
+                        )}
+
+                        <div className="flex items-center justify-center gap-2 text-white/40 font-mono text-xs tracking-[0.2em] uppercase">
+                            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
+                            <span>System Active</span>
+                            <span className="text-white/10">|</span>
+                            <span>SEQ_ID: {Math.random().toString(36).substring(7).toUpperCase()}</span>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {currentSingleResult && !loading && (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-12">
+            {/* --- HERO STATE (When no results) --- */}
+            {!currentSingleResult && bulkResults.length === 0 && (
+                <Hero
+                    domainInput={domainInput}
+                    setDomainInput={setDomainInput}
+                    handleCheck={handleManualCheck}
+                    handleKeyDown={handleKeyDown}
+                    loading={loading}
+                    error={inputError}
+                    onFileUpload={handleFileUpload}
+                />
+            )}
 
-                    {/* 1. Technical Configuration */}
-                    <TechnicalConfig
-                        domain={currentSingleResult.domain}
-                        rawSpf={currentSingleResult.rawSpf}
-                        updatedSpf={generateUpdatedSpf(currentSingleResult.rawSpf)}
-                        rawDmarc={currentSingleResult.rawDmarc}
-                        updatedDmarc={generateUpdatedDmarc(currentSingleResult.rawDmarc, currentSingleResult.domain)}
-                    />
+            {/* --- BULK RESULTS STATE --- */}
+            {!currentSingleResult && bulkResults.length > 0 && (
+                <BulkResultsTable results={bulkResults} onSelect={handleSelectDomain} />
+            )}
 
-                    {/* 2. Verdict Banner */}
-                    <div className="">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-3xl font-bold text-gray-900">{currentSingleResult.domain}</h2>
-                            <span className="text-sm text-gray-500 hidden sm:inline">
-                                Report Generated: {new Date().toLocaleTimeString()}
-                            </span>
+            {/* --- RESULTS STATE --- */}
+            {currentSingleResult && (
+                <div className="pt-20 pb-24 min-h-screen">
+
+                    {/* Domain Result Header (LEFT ALIGNED) */}
+                    <div className="max-w-7xl mx-auto px-6 w-full flex flex-col items-start mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="flex flex-col gap-2 w-full">
+                            <div className="flex items-center gap-2 text-white/40 text-xs font-mono uppercase tracking-widest justify-start">
+                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                                Analysis Complete
+                                <span className="text-white/10">|</span>
+                                {new Date().toLocaleDateString()}
+                            </div>
+                            <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
+                                {currentSingleResult.domain}
+                            </h1>
+                            <p className="text-white/50 text-lg">
+                                Comprehensive security diagnostic report.
+                            </p>
                         </div>
-                        <VerdictBanner report={currentSingleResult} />
                     </div>
 
-                    {/* 2. Health Cards (Category Summary - Top Row) */}
-                    {(() => {
-                        const cats = currentSingleResult.categories;
-                        const orderedCategories = [
-                            cats.problems,
-                            cats.blacklist,
-                            cats.smtp,
-                            cats.webServer,
-                            cats.dns,
-                            cats.spf,
-                            cats.dmarc,
-                            cats.dkim
-                        ].filter(Boolean);
+                    {/* Results Container */}
+                    <div ref={resultsRef} className="max-w-7xl mx-auto px-6 animate-in fade-in slide-in-from-bottom-8 duration-500 space-y-8">
 
-                        return (
-                            <>
-                                <div>
-                                    {/* <h3 className="text-xl font-bold text-gray-900 mb-4">Diagnostic Summary</h3> */}
+                        {/* 1. TECHNICAL CONFIGURATION (Top Priority) */}
+                        <TechnicalConfig
+                            domain={currentSingleResult.domain}
+                            rawSpf={currentSingleResult.rawSpf}
+                            updatedSpf={generateUpdatedSpf(currentSingleResult.rawSpf)}
+                            rawDmarc={currentSingleResult.rawDmarc}
+                            updatedDmarc={generateUpdatedDmarc(currentSingleResult.rawDmarc, currentSingleResult.domain)}
+                            spfSecure={currentSingleResult.categories.spf.tests.every(t => t.status === 'Pass') && !currentSingleResult.rawSpf?.includes('-all')}
+                            dmarcSecure={currentSingleResult.categories.dmarc.tests.every(t => t.status === 'Pass')}
+                        />
+
+                        {/* 2. VERDICT BANNER (Secondary - Pushed down to require scroll) */}
+                        <div className="mt-32">
+                            <VerdictBanner report={currentSingleResult} />
+                        </div>
+
+                        {/* 3. COLLAPSED DETAILS */}
+                        <div className="pt-8 border-t border-white/10 mt-12 mb-24">
+                            <button
+                                onClick={() => setShowAdvanced(!showAdvanced)}
+                                className="w-full flex items-center justify-between text-white/60 hover:text-white transition-colors py-4 group bg-[#1c1c1e] border border-white/10 rounded-xl px-6 shadow-sm hover:border-white/20"
+                            >
+                                <span className="text-sm font-bold uppercase tracking-widest">Advanced Technical Details</span>
+                                <div className="flex items-center gap-2 text-sm font-medium opacity-70 group-hover:opacity-100">
+                                    {showAdvanced ? "Hide Report" : "Show Full Report"}
+                                    {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </div>
+                            </button>
+
+                            {showAdvanced && (
+                                <div className="space-y-12 pt-8 animate-in fade-in slide-in-from-top-4 duration-300">
+
+                                    <ProblemsSection problems={currentSingleResult.categories.problems} />
                                     <HealthSummary
-                                        categories={orderedCategories}
+                                        categories={[
+                                            currentSingleResult.categories.dmarc,
+                                            currentSingleResult.categories.spf,
+                                            currentSingleResult.categories.dkim,
+                                            currentSingleResult.categories.smtp,
+                                            currentSingleResult.categories.webServer,
+                                            currentSingleResult.categories.dns,
+                                            currentSingleResult.categories.blacklist
+                                        ].filter(Boolean)}
                                         onCategoryClick={scrollToCategory}
                                     />
+                                    <TestList
+                                        activeCategory={activeCategory}
+                                        categories={[
+                                            currentSingleResult.categories.dns,
+                                            currentSingleResult.categories.spf,
+                                            currentSingleResult.categories.dmarc,
+                                            currentSingleResult.categories.dkim,
+                                            currentSingleResult.categories.webServer,
+                                            currentSingleResult.categories.blacklist,
+                                            currentSingleResult.categories.smtp
+                                        ].filter(Boolean)} />
                                 </div>
-
-                                {/* Summary Table (MxToolbox Style) */}
-                                <div className="mt-8">
-                                    <ProblemSummaryTable
-                                        problems={cats.problems}
-                                        domain={currentSingleResult.domain}
-                                    />
-                                </div>
-
-                                {/* Problems Table (MxToolbox Parity - Detailed) */}
-                                <div className="mt-8">
-                                    <ProblemTable problems={cats.problems} />
-                                </div>
-
-                                {/* 3. Detailed List */}
-                                <TestList categories={orderedCategories} />
-                            </>
-                        );
-                    })()}
-
-
-
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
-
-            {results.length > 0 && (
-                <div className="mt-16 pt-8 border-t border-gray-200">
-                    <h3 className="text-lg font-bold text-gray-900 mb-4">Session History</h3>
-                    <ResultTable results={results} />
-                </div>
-            )}
-
         </div>
     );
 }
