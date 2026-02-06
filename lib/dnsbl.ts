@@ -19,8 +19,17 @@ export async function checkDNSBL(ip: string): Promise<BlacklistResult[]> {
         const lookup = `${reversedIp}.${list}`;
         try {
             // Use cached resolve4
-            await resolve4(lookup);
-            return { list, isListed: true };
+            const resultIps = await resolve4(lookup);
+
+            // Check specifically for Spamhaus return codes indicating "Blocked/Refused" (Rate Limited)
+            // https://docs.spamhaus.com/dnsbl/docs/faq/dnsbl/return-codes
+            // 127.255.255.0/24 are return codes for blocked queries, NOT listings.
+            if (list === 'zen.spamhaus.org') {
+                const isBlocked = resultIps.some(ip => ip.startsWith('127.255.255.'));
+                if (isBlocked) return { list, isListed: false };
+            }
+
+            return { list, isListed: resultIps.length > 0 };
         } catch {
             return { list, isListed: false };
         }
