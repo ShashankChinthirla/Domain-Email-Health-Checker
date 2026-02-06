@@ -137,8 +137,12 @@ async function runDNSTests(domain: string): Promise<TestResult[]> {
                         }
                     }
                 }
-            } catch {
-                t.push({ name: 'MX Record Published', status: 'Error', info: 'Missing', reason: 'No MX records found.', recommendation: 'You cannot receive email without MX records.' });
+            } catch (error: any) {
+                if (error.code === 'ENOTFOUND' || error.code === 'ENODATA' || error.code === 'NOTFOUND') {
+                    t.push({ name: 'MX Record Published', status: 'Error', info: 'Missing', reason: 'No MX records found.', recommendation: 'You cannot receive email without MX records.' });
+                } else {
+                    t.push({ name: 'MX Record Published', status: 'Error', info: 'DNS Error', reason: `DNS Lookup failed: ${error.message || 'Unknown error'}.`, recommendation: 'Check your DNS configuration or try again.' });
+                }
             }
             return t;
         })(),
