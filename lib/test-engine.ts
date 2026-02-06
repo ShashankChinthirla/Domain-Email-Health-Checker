@@ -6,7 +6,7 @@ import { FullHealthReport, TestResult, CategoryResult, TestStatus } from './type
 
 // Force usage of Google & Cloudflare DNS for reliability
 try {
-    setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4', '1.0.0.1']);
+    setServers(['1.1.1.1', '1.0.0.1', '8.8.8.8', '8.8.4.4']);
 } catch (err) {
     console.warn('Failed to set strict DNS servers', err);
 }
@@ -43,7 +43,7 @@ function isPrivateIP(ip: string): boolean {
 }
 
 // Helper: Robust DNS TXT Lookup with Retry
-async function resolveTxtWithRetry(domain: string, retries = 2): Promise<string[][]> {
+async function resolveTxtWithRetry(domain: string, retries = 1): Promise<string[][]> {
     for (let i = 0; i <= retries; i++) {
         try {
             return await dns.resolveTxt(domain);
@@ -730,7 +730,9 @@ async function runBlacklistTestsWithMX(mxRecords: string[]): Promise<TestResult[
             primaryMx.includes('zoho.com') ||
             primaryMx.includes('zoho.eu') ||
             primaryMx.includes('facebook.com') ||
-            primaryMx.includes('meta.com');
+            primaryMx.includes('meta.com') ||
+            primaryMx.includes('amazon.com') ||
+            primaryMx.includes('amazonaws.com');
 
         let status: TestStatus = 'Pass';
         let info = 'Clean';
@@ -783,70 +785,76 @@ async function runBlacklistTestsWithMX(mxRecords: string[]): Promise<TestResult[
 // --- 6. Web Server (HTTPS + Cert) ---
 // Allowed: Port 443 only.
 async function runWebServerTests(domain: string): Promise<TestResult[]> {
-    const tests: TestResult[] = [];
+    // Run both checks in parallel to save time
+    const [fetchRes, tlsRes] = await Promise.all([
+        // 1. Basic Availability (Fetch)
+        (async () => {
+            const t: TestResult[] = [];
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const res = await fetch(`https://${domain}`, { method: 'HEAD', signal: controller.signal });
+                clearTimeout(timeoutId);
+                t.push({ name: 'HTTPS Availability', status: res.ok || res.status < 500 ? 'Pass' : 'Warning', info: `Status ${res.status}`, reason: `Web server returned status ${res.status}.`, recommendation: 'No action needed if this is your expected behavior.' });
+            } catch {
+                t.push({ name: 'HTTPS Availability', status: 'Warning', info: 'Unreachable', reason: 'Could not connect via HTTPS (Port 443).', recommendation: 'Ensure your web server is running and port 443 is open.' });
+            }
+            return t;
+        })(),
 
-    // 1. Basic Availability (Fetch)
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(`https://${domain}`, { method: 'HEAD', signal: controller.signal });
-        clearTimeout(timeoutId);
-        tests.push({ name: 'HTTPS Availability', status: res.ok || res.status < 500 ? 'Pass' : 'Warning', info: `Status ${res.status}`, reason: `Web server returned status ${res.status}.`, recommendation: 'No action needed if this is your expected behavior.' });
-    } catch {
-        tests.push({ name: 'HTTPS Availability', status: 'Warning', info: 'Unreachable', reason: 'Could not connect via HTTPS (Port 443).', recommendation: 'Ensure your web server is running and port 443 is open.' });
-    }
+        // 2. Certificate Details (TLS Socket)
+        (async () => {
+            const t: TestResult[] = [];
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    const socket = tls.connect(443, domain, { servername: domain, rejectUnauthorized: false }, () => {
+                        const cert = socket.getPeerCertificate();
+                        if (cert && cert.valid_to) {
+                            const validTo = new Date(cert.valid_to);
+                            const daysLeft = Math.floor((validTo.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
-    // 2. Certificate Details (TLS Socket)
-    // This is NOT an "Attack", it's a standard browser-like handshake.
-    try {
-        await new Promise<void>((resolve, reject) => {
-            const socket = tls.connect(443, domain, { servername: domain, rejectUnauthorized: false }, () => {
-                const cert = socket.getPeerCertificate();
-                if (cert && cert.valid_to) {
-                    const validTo = new Date(cert.valid_to);
-                    const daysLeft = Math.floor((validTo.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                            if (daysLeft < 0) {
+                                t.push({ name: 'SSL Certificate', status: 'Error', info: 'Expired', reason: `Certificate expired on ${validTo.toDateString()}.`, recommendation: 'Renew your SSL certificate immediately.' });
+                            } else if (daysLeft < 14) {
+                                t.push({ name: 'SSL Certificate', status: 'Warning', info: `Expires in ${daysLeft} days`, reason: 'Certificate is expiring soon.', recommendation: 'Plan to renew your certificate.' });
+                            } else {
+                                t.push({ name: 'SSL Certificate', status: 'Pass', info: `Valid (${daysLeft} days left)`, reason: 'Certificate is valid.', recommendation: 'No action needed.' });
+                            }
 
-                    if (daysLeft < 0) {
-                        tests.push({ name: 'SSL Certificate', status: 'Error', info: 'Expired', reason: `Certificate expired on ${validTo.toDateString()}.`, recommendation: 'Renew your SSL certificate immediately.' });
-                    } else if (daysLeft < 14) {
-                        tests.push({ name: 'SSL Certificate', status: 'Warning', info: `Expires in ${daysLeft} days`, reason: 'Certificate is expiring soon.', recommendation: 'Plan to renew your certificate.' });
-                    } else {
-                        tests.push({ name: 'SSL Certificate', status: 'Pass', info: `Valid (${daysLeft} days left)`, reason: 'Certificate is valid.', recommendation: 'No action needed.' });
-                    }
-
-                    if (socket.authorized) {
-                        tests.push({ name: 'SSL Chain', status: 'Pass', info: 'Valid', reason: 'Certificate chain is trusted.', recommendation: 'No action needed.' });
-                    } else {
-                        // socket.authorized is true only if rejectUnauthorized is true? 
-                        // With rejectUnauthorized: false, we check socket.authorizationError
-                        if (socket.authorizationError) {
-                            tests.push({ name: 'SSL Chain', status: 'Warning', info: socket.authorizationError.message, reason: 'Certificate trust status is invalid.', recommendation: 'Check intermediate certificates.' });
+                            if (socket.authorized) {
+                                t.push({ name: 'SSL Chain', status: 'Pass', info: 'Valid', reason: 'Certificate chain is trusted.', recommendation: 'No action needed.' });
+                            } else {
+                                if (socket.authorizationError) {
+                                    t.push({ name: 'SSL Chain', status: 'Warning', info: socket.authorizationError.message, reason: 'Certificate trust status is invalid.', recommendation: 'Check intermediate certificates.' });
+                                } else {
+                                    t.push({ name: 'SSL Chain', status: 'Pass', info: 'Valid', reason: 'Certificate chain is trusted.', recommendation: 'No action needed.' });
+                                }
+                            }
                         } else {
-                            tests.push({ name: 'SSL Chain', status: 'Pass', info: 'Valid', reason: 'Certificate chain is trusted.', recommendation: 'No action needed.' });
+                            t.push({ name: 'SSL Certificate', status: 'Error', info: 'No Certificate presented', reason: 'Server did not present a certificate.', recommendation: 'Configure SSL on your web server.' });
                         }
-                    }
-                } else {
-                    tests.push({ name: 'SSL Certificate', status: 'Error', info: 'No Certificate presented', reason: 'Server did not present a certificate.', recommendation: 'Configure SSL on your web server.' });
-                }
-                socket.end();
-                resolve();
-            });
+                        socket.end();
+                        resolve();
+                    });
 
-            socket.on('error', (err) => {
-                tests.push({ name: 'SSL Handshake', status: 'Warning', info: err.message, reason: 'SSL Connection failed.', recommendation: 'Check server TLS configuration.' });
-                resolve();
-            });
+                    socket.on('error', (err) => {
+                        t.push({ name: 'SSL Handshake', status: 'Warning', info: err.message, reason: 'SSL Connection failed.', recommendation: 'Check server TLS configuration.' });
+                        resolve();
+                    });
 
-            socket.setTimeout(5000, () => {
-                socket.destroy();
-                resolve();
-            });
-        });
-    } catch {
-        // Handled inside
-    }
+                    socket.setTimeout(2500, () => {
+                        socket.destroy();
+                        resolve();
+                    });
+                });
+            } catch {
+                // Handled inside
+            }
+            return t;
+        })()
+    ]);
 
-    return tests;
+    return [...fetchRes, ...tlsRes];
 }
 
 
@@ -918,12 +926,21 @@ export async function runFullHealthCheck(domain: string): Promise<FullHealthRepo
 
     const problems = allTests.filter(t => t.status !== 'Pass');
 
+    // Calculate score (0-100)
+    const totalTests = allTests.length;
+    const passedTests = allTests.filter(t => t.status === 'Pass').length;
+    const errorTests = allTests.filter(t => t.status === 'Error').length;
+
+    // Score formula: 100 * (passed / total) - (errors * 10)
+    const score = Math.max(0, Math.min(100, (passedTests / totalTests) * 100 - (errorTests * 5)));
+
     return {
         domain,
         rawSpf: spfRes.rawSpf,
         rawDmarc: dmarcRes.rawDmarc,
         dmarcPolicy: null,
         mxRecords,
+        score: Math.round(score),
         categories: {
             problems: createCategory('Problems', problems),
             dns: createCategory('DNS', dnsResults),

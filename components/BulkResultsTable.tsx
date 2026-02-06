@@ -61,7 +61,7 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
     };
 
     return (
-        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-25 pb-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
             <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
                 <div>
                     <h2 className="text-3xl font-bold text-white mb-2">Bulk Analysis Report</h2>

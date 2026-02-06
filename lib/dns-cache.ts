@@ -27,7 +27,12 @@ function cachedResolve<T>(
     }
 
     // New Request
-    const promise = resolveFn()
+    // TIMEOUT WRAPPER: Force fail after 2000ms to prevent long hangs on bad domains
+    const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('DNS Timeout')), 10000)
+    );
+
+    const promise = Promise.race([resolveFn(), timeoutPromise])
         .then(data => {
             // Update cache with data on success
             cache.set(headersKey, { promise, timestamp: Date.now(), data });

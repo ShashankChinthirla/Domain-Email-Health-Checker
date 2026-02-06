@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { saveScanResult } from '@/lib/db';
 import { ResultTable } from './ResultTable';
 import { BulkResultsTable } from './BulkResultsTable';
 import { ProblemsSection } from './ProblemsSection';
@@ -12,7 +15,7 @@ import { TechnicalConfig } from './TechnicalConfig';
 import { PrimaryAction } from './PrimaryAction';
 import { Navbar } from './Navbar';
 import { Hero } from './Hero';
-import * as XLSX from 'xlsx';
+import { LoginModal } from '@/components/LoginModal';
 import { Download, Upload, Search, ShieldCheck, Loader2, ArrowRight, ChevronDown, ChevronUp, CheckCircle2, CircleDashed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -45,6 +48,27 @@ export function DomainChecker() {
     const [bulkResults, setBulkResults] = useState<FullHealthReport[]>([]);
     const [isBulkProcessing, setIsBulkProcessing] = useState(false);
     const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+
+    // Auth State
+    const [user, setUser] = useState<User | null>(null);
+    const [showLoginModal, setShowLoginModal] = useState(false);
+
+
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (u) => {
+            setUser(u);
+            if (!u) {
+                // Clear all state on logout
+                setCurrentSingleResult(null);
+                setResults([]);
+                setBulkResults([]);
+                setScanIndex(0);
+                setShowAdvanced(false);
+            }
+        });
+        return () => unsubscribe();
+    }, []);
+
 
     const fetchDomainHealth = async (domain: string) => {
         // Sanitize domain
@@ -97,6 +121,11 @@ export function DomainChecker() {
                     setCurrentSingleResult(result);
                     setDomainInput('');
                     setLoading(false);
+
+                    // Save to History if Logged In
+                    if (auth.currentUser) {
+                        saveScanResult(auth.currentUser.uid, result.domain, result.score);
+                    }
                 } else {
                     setInputError('Could not retrieve data for this domain.');
                     setLoading(false);
@@ -134,6 +163,8 @@ export function DomainChecker() {
 
             try {
                 const bstr = evt.target?.result;
+                // Dynamic import to fix ChunkLoadError and optimize initial load
+                const XLSX = await import('xlsx');
                 const workbook = XLSX.read(bstr, { type: 'binary' });
                 const ws = workbook.Sheets[workbook.SheetNames[0]];
                 const data = XLSX.utils.sheet_to_json(ws) as any[];
@@ -176,12 +207,6 @@ export function DomainChecker() {
                 for (let i = 0; i < Math.min(CONCURRENCY_LIMIT, total); i++) {
                     initialPromises.push(processNext());
                 }
-
-                // Wait for all "threads" to eventually finish
-                // We wrap the initial promises in Promise.all to ensure the main thread waits
-                // But note: processNext recursively chains itself, so we need to track completion differently or just await the initial set
-                // Actually, waiting for initialPromises alone isn't enough because they resolve when the *first* item finishes (if we used simple recursion without tracking)
-                // A better pattern for "wait until all done":
 
                 await new Promise<void>((resolve) => {
                     const checkDone = setInterval(() => {
@@ -233,6 +258,18 @@ export function DomainChecker() {
         window.scrollTo({ top: 0, behavior: 'instant' });
     };
 
+    // Lock scroll when loading
+    useEffect(() => {
+        if (loading) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = '';
+        }
+        return () => {
+            document.body.style.overflow = '';
+        };
+    }, [loading]);
+
     return (
         <div className="min-h-screen relative bg-black font-sans selection:bg-white/20">
 
@@ -248,7 +285,6 @@ export function DomainChecker() {
             {/* --- TITANIUM ORBITAL LOADING OVERLAY --- */}
             {loading && (
                 <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center overflow-hidden">
-                    {/* ... (Orbital Loading Content stays same, not repeating to save space) ... */}
                     {/* Background Ambient Plasma */}
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white/5 via-transparent to-transparent opacity-50 animate-pulse" />
 
@@ -328,8 +364,13 @@ export function DomainChecker() {
                     loading={loading}
                     error={inputError}
                     onFileUpload={handleFileUpload}
+                    isAuthenticated={!!user}
+                    onRequireLogin={() => setShowLoginModal(true)}
                 />
             )}
+
+            {/* Login Modal for Gatekeeping */}
+            <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
 
             {/* --- BULK RESULTS STATE --- */}
             {!currentSingleResult && bulkResults.length > 0 && (
