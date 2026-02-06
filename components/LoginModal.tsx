@@ -41,6 +41,10 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         try {
             if (isLogin) {
                 await signInWithEmailAndPassword(auth, email, password);
+                // Sync user profile on login too, just in case
+                if (auth.currentUser) await saveUserProfile(auth.currentUser);
+            } else {
+                // Sign Up Logic
                 const cred = await createUserWithEmailAndPassword(auth, email, password);
                 if (name) {
                     await updateProfile(cred.user, { displayName: name });
