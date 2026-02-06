@@ -228,7 +228,7 @@ export function DomainChecker() {
     };
 
     // Helper generators
-    const generateUpdatedSpf = (raw: string | null) => raw ? raw.replace(/-all|\?all/g, '~all') : 'v=spf1 a mx ~all';
+    const generateUpdatedSpf = (raw: string | null) => raw ? raw.replace(/\?all|\+all/g, '~all') : 'v=spf1 a mx ~all';
     const generateUpdatedDmarc = (raw: string | null, domain: string) => {
         let rua = `mailto:dmarc-reports@${domain}`;
         let ruf = '';
@@ -409,7 +409,7 @@ export function DomainChecker() {
                             updatedSpf={generateUpdatedSpf(currentSingleResult.rawSpf)}
                             rawDmarc={currentSingleResult.rawDmarc}
                             updatedDmarc={generateUpdatedDmarc(currentSingleResult.rawDmarc, currentSingleResult.domain)}
-                            spfSecure={currentSingleResult.categories.spf.tests.every(t => t.status === 'Pass') && !currentSingleResult.rawSpf?.includes('-all')}
+                            spfSecure={currentSingleResult.categories.spf.tests.every(t => t.status === 'Pass')}
                             dmarcSecure={currentSingleResult.categories.dmarc.tests.every(t => t.status === 'Pass')}
                         />
 
