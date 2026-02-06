@@ -5,11 +5,8 @@ import { checkDNSBL } from './dnsbl';
 import { FullHealthReport, TestResult, CategoryResult, TestStatus } from './types';
 
 // Force usage of Google & Cloudflare DNS for reliability
-try {
-    setServers(['1.1.1.1', '1.0.0.1', '8.8.8.8', '8.8.4.4']);
-} catch (err) {
-    console.warn('Failed to set strict DNS servers', err);
-}
+// REMOVED: setServers(['1.1.1.1', ...]) caused issues on Vercel/AWS Lambda (EREFUSED).
+// We now rely on the environment's default DNS resolver (system), which is faster and unblocked.
 
 // Re-export for backend
 export type { FullHealthReport, TestResult, CategoryResult, TestStatus };

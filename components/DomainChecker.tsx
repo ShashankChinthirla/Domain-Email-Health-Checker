@@ -409,7 +409,7 @@ export function DomainChecker() {
                             updatedSpf={generateUpdatedSpf(currentSingleResult.rawSpf)}
                             rawDmarc={currentSingleResult.rawDmarc}
                             updatedDmarc={generateUpdatedDmarc(currentSingleResult.rawDmarc, currentSingleResult.domain)}
-                            spfSecure={currentSingleResult.categories.spf.tests.every(t => t.status === 'Pass') && !currentSingleResult.rawSpf?.includes('-all')}
+                            spfSecure={currentSingleResult.categories.spf.tests.every(t => t.status === 'Pass')}
                             dmarcSecure={currentSingleResult.categories.dmarc.tests.every(t => t.status === 'Pass')}
                         />
 
