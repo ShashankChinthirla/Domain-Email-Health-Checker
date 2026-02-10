@@ -10,54 +10,131 @@ interface BulkResultsTableProps {
 }
 
 export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
+    const [filter, setFilter] = React.useState<'all' | 'clean' | 'issues'>('all');
+
     if (results.length === 0) return null;
 
+    // Filter Logic
+    const filteredResults = results.filter(r => {
+        // Redefine "Clean": Score > 95, Clean SPF, Clean DMARC, Clean Blacklist (Errors Only Checked)
+        // Warnings are allowed if score is high and critical components are error-free.
+        const spfErrors = r.categories.spf?.stats.errors || 0;
+        const dmarcErrors = r.categories.dmarc?.stats.errors || 0;
+        const blacklistErrors = r.categories.blacklist?.stats.errors || 0;
+
+        const isClean = r.score > 95 && spfErrors === 0 && dmarcErrors === 0 && blacklistErrors === 0;
+
+        if (filter === 'clean') return isClean;
+        if (filter === 'issues') return !isClean;
+        return true;
+    });
+
     const handleExport = () => {
-        const getHealthCheck = (r: FullHealthReport) => {
+        // Use filteredResults for export so user gets what they see
+        const exportData = filteredResults.map(r => {
             const allCats = Object.values(r.categories);
             const errors = allCats.reduce((acc, cat) => acc + cat.stats.errors, 0);
             const warnings = allCats.reduce((acc, cat) => acc + cat.stats.warnings, 0);
-            if (errors === 0 && warnings === 0) return '100% Secure';
-            return `${errors} Errors, ${warnings} Warnings`;
-        };
 
-        const generateUpdatedSpf = (raw: string | null) => raw ? raw.replace(/-all|\?all/g, '~all') : 'v=spf1 a mx ~all';
-        const generateUpdatedDmarc = (raw: string | null, domain: string) => {
-            let rua = `mailto:dmarc-reports@${domain}`;
-            let ruf = '';
-            if (raw) {
-                const mRua = raw.match(/rua=([^;]+)/i);
-                if (mRua) rua = mRua[1].trim();
-                const mRuf = raw.match(/ruf=([^;]+)/i);
-                if (mRuf) ruf = ` ruf=${mRuf[1].trim()};`;
+            // Re-check clean status for export formatting
+            const spfErrors = r.categories.spf?.stats.errors || 0;
+            const dmarcErrors = r.categories.dmarc?.stats.errors || 0;
+            const blacklistErrors = r.categories.blacklist?.stats.errors || 0;
+            // NOTE: Using the same logic as filter above
+            const isClean = r.score > 95 && spfErrors === 0 && dmarcErrors === 0 && blacklistErrors === 0;
+
+            // Clean Export Mode
+            if (filter === 'clean') {
+                return {
+                    "Domain": r.domain,
+                    "SPF": r.rawSpf || "Missing",
+                    "DMARC": r.rawDmarc || "Missing",
+                    "Score": r.score
+                };
             }
-            return `v=DMARC1; p=reject; sp=reject; pct=100; rua=${rua};${ruf} adkim=r; aspf=r;`;
-        };
+
+            // Error/All Mode
+            const generateUpdatedSpf = (raw: string | null) => raw ? raw.replace(/-all|\?all/g, '~all') : 'v=spf1 a mx ~all';
+            const generateUpdatedDmarc = (raw: string | null, domain: string) => {
+                let rua = `mailto:dmarc-reports@${domain}`;
+                let ruf = '';
+                if (raw) {
+                    const mRua = raw.match(/rua=([^;]+)/i);
+                    if (mRua) rua = mRua[1].trim();
+                    const mRuf = raw.match(/ruf=([^;]+)/i);
+                    if (mRuf) ruf = ` ruf=${mRuf[1].trim()};`;
+                }
+                return `v=DMARC1; p=reject; sp=reject; pct=100; rua=${rua};${ruf} adkim=r; aspf=r;`;
+            };
+
+            const row: any = {
+                "Domain": r.domain,
+                "Score": r.score,
+                "Health Status": (errors === 0 && warnings === 0) ? '100% Secure' : `${errors} Errors, ${warnings} Warnings`,
+                "SPF [Full]": r.rawSpf || "Missing",
+                "Updated SPF [Full]": generateUpdatedSpf(r.rawSpf),
+                "DMARC [Full]": r.rawDmarc || "Missing",
+                "Updated DMARC [Full]": generateUpdatedDmarc(r.rawDmarc, r.domain),
+            };
+
+            // Enhanced Error Reporting
+            // Helper to extract error text
+            const getIssues = (catName: keyof typeof r.categories) => {
+                const cat = r.categories[catName];
+                if (!cat) return "";
+                return cat.tests
+                    .filter(t => t.status === 'Error' || t.status === 'Warning')
+                    .map(t => `${t.status.toUpperCase()}: ${t.name} - ${t.reason}`)
+                    .join(' | ');
+            };
+
+            row["SPF Issues"] = getIssues('spf');
+            row["DMARC Issues"] = getIssues('dmarc');
+            row["DKIM Issues"] = getIssues('dkim');
+            row["DNS Issues"] = getIssues('dns');
+            row["Web Server Issues"] = getIssues('webServer');
+            row["Blacklist Issues"] = getIssues('blacklist');
+            row["SMTP Issues"] = getIssues('smtp');
+
+            return row;
+        });
 
         const wb = XLSX.utils.book_new();
-        const data = results.map(r => ({
-            "Domain": r.domain,
-            "SPF [Full]": r.rawSpf || "Missing",
-            "Updated SPF [Full]": generateUpdatedSpf(r.rawSpf),
-            "DMARC [Full]": r.rawDmarc || "Missing",
-            "Updated DMARC [Full]": generateUpdatedDmarc(r.rawDmarc, r.domain),
-            "Health Check": getHealthCheck(r)
-        }));
-        const ws = XLSX.utils.json_to_sheet(data);
+        const ws = XLSX.utils.json_to_sheet(exportData);
 
-        // Auto-width columns
-        const wscols = [
-            { wch: 20 }, // Domain
-            { wch: 40 }, // SPF
-            { wch: 40 }, // Updated SPF
-            { wch: 40 }, // DMARC
-            { wch: 40 }, // Updated DMARC
-            { wch: 25 }, // Health
-        ];
+        // Auto-width columns based on mode
+        let wscols: any[] = [];
+
+        if (filter === 'clean') {
+            wscols = [
+                { wch: 25 }, // Domain
+                { wch: 40 }, // SPF
+                { wch: 40 }, // DMARC
+                { wch: 10 }, // Score
+            ];
+        } else {
+            wscols = [
+                { wch: 25 }, // Domain
+                { wch: 10 }, // Score
+                { wch: 25 }, // Health
+                { wch: 40 }, // SPF
+                { wch: 40 }, // Updated SPF
+                { wch: 40 }, // DMARC
+                { wch: 40 }, // Updated DMARC
+                { wch: 50 }, // SPF Issues
+                { wch: 50 }, // DMARC Issues
+                { wch: 50 }, // DKIM Issues
+                { wch: 50 }, // DNS Issues
+                { wch: 40 }, // Web Issues
+                { wch: 40 }, // Blacklist Issues
+                { wch: 30 }, // SMTP Issues
+            ];
+        }
+
         ws['!cols'] = wscols;
 
-        XLSX.utils.book_append_sheet(wb, ws, "Health Report");
-        XLSX.writeFile(wb, `domain-health-bulk-${new Date().getTime()}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, `Health Report (${filter})`);
+        XLSX.writeFile(wb, `domain-health-${filter}-${new Date().getTime()}.xlsx`);
     };
 
     return (
@@ -65,16 +142,48 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
             <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
                 <div>
                     <h2 className="text-3xl font-bold text-white mb-2">Bulk Analysis Report</h2>
-                    <p className="text-slate-400">Processed {results.length} domains successfully.</p>
+                    <p className="text-slate-400">Processed {results.length} domains. Showing {filteredResults.length} results.</p>
                 </div>
+
                 <div className="flex items-center gap-3">
+                    {/* Filter Buttons */}
+                    <div className="flex bg-white/5 rounded-xl p-1 border border-white/10 mr-4">
+                        <button
+                            onClick={() => setFilter('all')}
+                            className={cn(
+                                "px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+                                filter === 'all' ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-white"
+                            )}
+                        >
+                            All
+                        </button>
+                        <button
+                            onClick={() => setFilter('clean')}
+                            className={cn(
+                                "px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+                                filter === 'clean' ? "bg-emerald-500 text-black shadow-lg" : "text-slate-400 hover:text-white"
+                            )}
+                        >
+                            Clean
+                        </button>
+                        <button
+                            onClick={() => setFilter('issues')}
+                            className={cn(
+                                "px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+                                filter === 'issues' ? "bg-rose-500 text-white shadow-lg" : "text-slate-400 hover:text-white"
+                            )}
+                        >
+                            Errors
+                        </button>
+                    </div>
+
                     <button
                         onClick={handleExport}
-                        title="Export to Excel"
+                        title="Export Current View"
                         className="group flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold transition-all shadow-lg hover:shadow-emerald-500/20 active:scale-95"
                     >
                         <Download className="w-4 h-4" />
-                        <span>Export</span>
+                        <span>Export {filter !== 'all' ? filter : ''}</span>
                     </button>
                     <button
                         onClick={() => window.location.reload()}
@@ -92,6 +201,7 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
                         <thead>
                             <tr className="border-b border-white/10 bg-white/[0.02]">
                                 <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest pl-6">Domain</th>
+                                <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Score</th>
                                 <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Issues</th>
                                 <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">SPF</th>
                                 <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">DMARC</th>
@@ -100,7 +210,7 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {results.map((res, idx) => (
+                            {filteredResults.map((res, idx) => (
                                 <tr
                                     key={idx}
                                     onClick={() => onSelect(res)}
@@ -108,6 +218,16 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
                                 >
                                     <td className="p-4 pl-6 font-medium text-slate-200 text-sm">
                                         {res.domain}
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <div className={cn(
+                                            "inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold",
+                                            res.score >= 90 ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
+                                                res.score >= 70 ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
+                                                    "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                                        )}>
+                                            {res.score}
+                                        </div>
                                     </td>
                                     <td className="p-4 text-center">
                                         <ProblemsBadge report={res} />
@@ -130,6 +250,11 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
                             ))}
                         </tbody>
                     </table>
+                    {filteredResults.length === 0 && (
+                        <div className="p-12 text-center text-slate-500">
+                            No domains match the selected filter.
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

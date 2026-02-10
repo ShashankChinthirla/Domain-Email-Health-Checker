@@ -788,12 +788,37 @@ async function runBlacklistTestsWithMX(mxRecords: string[]): Promise<TestResult[
 async function runWebServerTests(domain: string): Promise<TestResult[]> {
     // Run both checks in parallel to save time
     const [fetchRes, tlsRes] = await Promise.all([
-        // 1. Basic Availability (Fetch)
+        // 1. Basic Availability (Fetch HTTP & HTTPS)
         (async () => {
             const t: TestResult[] = [];
+
+            // HTTP (Port 80) Check
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                const res = await fetch(`http://${domain}`, { method: 'HEAD', redirect: 'manual', signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (res.status >= 300 && res.status < 400) {
+                    const location = res.headers.get('location');
+                    if (location && location.startsWith('https://')) {
+                        t.push({ name: 'HTTP Redirection', status: 'Pass', info: 'Redirects to HTTPS', reason: 'HTTP properly redirects to secure HTTPS.', recommendation: 'No action needed.' });
+                    } else {
+                        t.push({ name: 'HTTP Redirection', status: 'Warning', info: 'Redirects improperly', reason: `HTTP redirects to ${location}, expected https://${domain}.`, recommendation: 'Ensure HTTP redirects to HTTPS.' });
+                    }
+                } else if (res.ok) {
+                    t.push({ name: 'HTTP Availability', status: 'Warning', info: 'No Redirect', reason: 'HTTP is available but does not redirect to HTTPS.', recommendation: 'Configure 301 redirect from HTTP to HTTPS.' });
+                } else {
+                    t.push({ name: 'HTTP Availability', status: 'Warning', info: `Status ${res.status}`, reason: 'HTTP returned an error status.', recommendation: 'Check your web server configuration.' });
+                }
+            } catch {
+                t.push({ name: 'HTTP Availability', status: 'Warning', info: 'Unreachable', reason: 'Could not connect via HTTP (Port 80).', recommendation: 'Ensure your web server is running on port 80 and 443.' });
+            }
+
+            // HTTPS (Port 443) Check
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
                 const res = await fetch(`https://${domain}`, { method: 'HEAD', signal: controller.signal });
                 clearTimeout(timeoutId);
                 t.push({ name: 'HTTPS Availability', status: res.ok || res.status < 500 ? 'Pass' : 'Warning', info: `Status ${res.status}`, reason: `Web server returned status ${res.status}.`, recommendation: 'No action needed if this is your expected behavior.' });
