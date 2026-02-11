@@ -9,6 +9,8 @@ export interface TestResult {
     category?: string;      // Optional category reference
     host?: string;          // The specific host being tested (e.g. domain, mx, or blacklist zone)
     result?: string;        // Short human-readable summary of the outcome (MxToolbox style)
+    type?: 'IP' | 'DOMAIN'; // Added for categorizing tests
+    severity?: 'HIGH' | 'MEDIUM' | 'LOW'; // Added for impact analysis
 }
 
 export interface CategoryResult {

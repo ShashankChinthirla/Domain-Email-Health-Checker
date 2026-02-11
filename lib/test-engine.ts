@@ -1,7 +1,7 @@
 import * as dns from './dns-cache';
 import { setServers } from 'dns';
 import * as tls from 'tls'; // Used ONLY for HTTPS (Port 443) Certificate Check
-import { checkDNSBL } from './dnsbl';
+import { checkIPBlacklist, checkDomainBlacklist } from './dnsbl';
 import { FullHealthReport, TestResult, CategoryResult, TestStatus } from './types';
 
 // Force usage of Google & Cloudflare DNS for reliability
@@ -694,92 +694,157 @@ async function runDKIMTests(domain: string): Promise<TestResult[]> {
 
 
 // --- 5. Blacklist (Safe IP Check) ---
-async function runBlacklistTestsWithMX(mxRecords: string[]): Promise<TestResult[]> {
+// --- 5. Blacklist (Safe IP Check) ---
+async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Promise<TestResult[]> {
     if (mxRecords.length === 0) return [{ name: 'Blacklist Check', status: 'Warning', info: 'No MX Records to check', reason: 'We cannot check blacklists without an MX record.', recommendation: 'Fix your MX records first.' }];
 
-    // --- MXToolbox Parity Rules ---
-    // 1. Resolve primary MX (first in priority list)
-    // 2. Resolve only ONE IPv4 IP (ignore IPv6)
-    // 3. Perform DNSBL checks only against this single IP
-    let ip: string | null = null;
-    try {
-        const ips = await dns.resolve4(mxRecords[0]);
-        ip = ips[0]; // Pick exactly one IPv4
-    } catch {
-        return [{ name: 'MX IP Resolution', status: 'Error', info: 'Could not resolve MX IP', reason: 'DNS lookup for MX host failed.', recommendation: 'Check if your MX host exists.' }];
+    // 1. Resolve all unique MX IPs
+    const allIps = new Set<string>();
+    await Promise.all(mxRecords.map(async (mx) => {
+        try {
+            const ips = await dns.resolve4(mx);
+            ips.forEach(ip => allIps.add(ip));
+        } catch { /* ignore resolution failures for specific MXs */ }
+    }));
+
+    const uniqueIps = Array.from(allIps);
+    if (uniqueIps.length === 0) {
+        return [{ name: 'MX IP Resolution', status: 'Error', info: 'Could not resolve any MX IPs', reason: 'DNS lookup for all MX hosts failed.', recommendation: 'Check if your MX hosts exist.' }];
     }
 
-    // Run existing logic
-    const results = await checkDNSBL(ip);
+    // 2. Run IP Blacklists against all unique IPs
+    const ipTests: { [key: string]: { listed: boolean, status: any, targets: string[], details?: string } } = {};
 
-    // Explicitly show which IP was checked
-    const ipResult: TestResult = {
-        name: 'Checked IP',
-        status: 'Pass' as TestStatus,
-        info: ip,
-        reason: 'This is the primary MX IP address used for the blacklist analysis.',
-        recommendation: 'Ensure this is your primary sending IP.',
-        host: ip,
-        result: `Analysis performed on ${ip}`
-    };
+    // Initialize results map
+    const ipListNames = [
+        'Spamhaus ZEN', 'SpamCop', 'Barracuda', 'SORBS (IP)', 'PSBL',
+        'UCEPROTECT L1', 'DroneBL', 'MailSpike BL', 'RBL JP', 'Anonmails', 'Blocklist.de'
+    ];
+    ipListNames.forEach(name => ipTests[name] = { listed: false, status: 'PASS', targets: [], details: '' });
 
-    const finalResults: TestResult[] = results.map(res => {
-        const isLowImpact = res.list === 'work.drbl.gremlin.ru';
-        const primaryMx = mxRecords[0]?.toLowerCase() || '';
-        const isSharedProvider = primaryMx.includes('google.com') ||
-            primaryMx.includes('outlook.com') ||
-            primaryMx.includes('zoho.com') ||
-            primaryMx.includes('zoho.eu') ||
-            primaryMx.includes('facebook.com') ||
-            primaryMx.includes('meta.com') ||
-            primaryMx.includes('amazon.com') ||
-            primaryMx.includes('amazonaws.com');
+    await Promise.all(uniqueIps.map(async (ip) => {
+        const results = await checkIPBlacklist(ip);
+        results.forEach(res => {
+            if (res.status === 'FAIL') {
+                ipTests[res.list].listed = true;
+                ipTests[res.list].status = 'FAIL';
+                ipTests[res.list].targets.push(ip);
+                ipTests[res.list].details = res.details;
+            } else if (res.status === 'UNKNOWN' && (ipTests[res.list].status === 'PASS' || ipTests[res.list].status === 'TIMEOUT')) {
+                // UNKNOWN (Rate Limit) is more important to show than TIMEOUT or PASS
+                ipTests[res.list].status = 'UNKNOWN';
+                ipTests[res.list].details = res.details;
+            } else if (res.status === 'TIMEOUT' && ipTests[res.list].status === 'PASS') {
+                ipTests[res.list].status = 'TIMEOUT';
+                ipTests[res.list].details = 'Query timed out.';
+            }
+        });
+    }));
 
+    // 3. Run Domain Blacklists
+    const domainResults = await checkDomainBlacklist(domain);
+
+    // 4. Transform to TestResult[]
+    const results: TestResult[] = [];
+
+    // Shared Provider logic (Warning instead of Error for major mail hosts)
+    const primaryMx = mxRecords[0]?.toLowerCase() || '';
+    const isSharedProvider = primaryMx.includes('google.com') ||
+        primaryMx.includes('outlook.com') ||
+        primaryMx.includes('zoho.com') ||
+        primaryMx.includes('zoho.eu') ||
+        primaryMx.includes('facebook.com') ||
+        primaryMx.includes('meta.com') ||
+        primaryMx.includes('amazon.com') ||
+        primaryMx.includes('amazonaws.com');
+
+    // Add IP Results
+    for (const name of ipListNames) {
+        const data = ipTests[name];
         let status: TestStatus = 'Pass';
-        let info = 'Clean';
-        let reason = `IP ${ip} is not listed on ${res.list}.`;
-        let rec = 'No action needed.';
         let resultTxt = 'Clean';
+        let severity: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
+        let reason = `Clean across all ${uniqueIps.length} MX IPs.`;
+        let rec = 'No action needed.';
 
-        if (res.isListed) {
-            // Only Error on high-trust abuse lists (e.g. Spamcop) if it's a shared provider
-            // NOTE: Spamhaus ZEN contains SBL (high trust) + PBA/XBL (automated).
-            // For shared providers, we treat generic listings as Warning to avoid false alarms on dynamic ranges.
-            const isHighTrustAbuse = res.list === 'bl.spamcop.net';
+        if (data.status === 'FAIL') {
+            const isHighTrust = name === 'SpamCop' || name === 'Spamhaus ZEN';
+            severity = isHighTrust ? 'HIGH' : 'MEDIUM';
 
-            if (isSharedProvider && !isHighTrustAbuse) {
+            if (isSharedProvider && !isHighTrust) {
                 status = 'Warning';
-                info = 'Shared provider IP';
-                reason = "This IP belongs to a shared email provider (e.g., Google, Meta). Reputation is managed by the provider, not the domain owner.";
-                rec = "No action required unless sending mail from your own server.";
-                resultTxt = 'Shared IP Warning';
-            } else if (isLowImpact) {
-                status = 'Warning';
-                info = 'Low-impact blacklist';
-                reason = "This blacklist is low-reputation and often flags shared provider IPs.";
-                rec = "Monitor only. No action required unless listed on major blacklists.";
-                resultTxt = 'Low-impact';
+                resultTxt = 'Shared Provider Listed';
+                reason = `Listed on ${name} for IP(s): ${data.targets.join(', ')}. However, this is a shared provider IP.`;
+                rec = 'Reputation is managed by the provider. No action needed unless you have high bounce rates.';
             } else {
                 status = 'Error';
-                info = 'Listed';
-                reason = `IP ${ip} is listed on ${res.list}.`;
-                rec = 'Request delisting from this provider.';
                 resultTxt = 'Listed';
+                reason = `IP(s) ${data.targets.join(', ')} are listed on ${name}.`;
+                rec = `Contact ${name} for delisting or fix the offending sender on these IPs.`;
             }
+        } else if (data.status === 'TIMEOUT') {
+            status = 'Warning';
+            resultTxt = 'Timeout';
+            reason = `Check timed out for ${name}. Status is inconclusive.`;
+            rec = 'Usually temporary. No action needed unless it persists.';
+        } else if (data.status === 'UNKNOWN') {
+            status = 'Warning';
+            resultTxt = 'Rate Limited';
+            reason = data.details || `${name} refused the query (rate limit).`;
+            rec = 'Use a private DNS resolver or check again later.';
         }
 
-        return {
+        results.push({
+            name,
+            status,
+            info: data.targets.length > 0 ? `Listed: ${data.targets.length} IP(s)` : 'Clean',
+            reason,
+            recommendation: rec,
+            host: name,
+            result: resultTxt,
+            type: 'IP',
+            severity
+        });
+    }
+
+    // Add Domain Results
+    let anyDomainFail = false;
+    domainResults.forEach(res => {
+        let status: TestStatus = 'Pass';
+        let severity: 'HIGH' | 'MEDIUM' | 'LOW' = res.list.includes('Spamhaus') ? 'HIGH' : 'MEDIUM';
+        let reason = res.status === 'PASS' ? `Domain ${domain} is not listed on ${res.list}.` : `Domain ${domain} is listed on ${res.list}.`;
+        let rec = res.status === 'PASS' ? 'No action needed.' : 'Request delisting from this provider.';
+
+        if (res.status === 'FAIL') {
+            status = 'Error';
+            anyDomainFail = true;
+            reason = res.details || reason;
+        } else if (res.status === 'TIMEOUT') {
+            status = 'Warning';
+            reason = `Check timed out for ${res.list}.`;
+        } else if (res.status === 'UNKNOWN') {
+            status = 'Warning';
+            reason = res.details || `${res.list} refused the query (rate limit).`;
+        }
+
+        results.push({
             name: res.list,
             status,
-            info,
-            reason: reason,
+            info: res.status === 'FAIL' ? 'Listed' : (res.status === 'PASS' ? 'Clean' : res.status),
+            reason,
             recommendation: rec,
             host: res.list,
-            result: resultTxt
-        };
+            result: res.status === 'FAIL' ? (res.list === 'Spamhaus DBL' ? 'Deliverability Risk' : 'Listed') : 'Clean',
+            type: 'DOMAIN',
+            severity
+        });
     });
 
-    return [ipResult, ...finalResults];
+    // Special Rule: If any domain fail, apply "Deliverability Risk" more broadly if needed
+    // The user rule "If any Domain blacklist fails → overall status = 'Deliverability Risk'"
+    // We already applied it to the 'result' field of the failed Domain tests above.
+
+    return results;
 }
 
 
@@ -927,7 +992,7 @@ export async function runFullHealthCheck(domain: string): Promise<FullHealthRepo
         .then(mxs => mxs.sort((a, b) => a.priority - b.priority).map(m => m.exchange))
         .catch(() => [] as string[]);
 
-    const pBlacklist = mxLookupForBlacklist.then(mxs => runBlacklistTestsWithMX(mxs));
+    const pBlacklist = mxLookupForBlacklist.then(mxs => runBlacklistTestsWithMX(domain, mxs));
 
     // 3. Await all
     const [dnsResults, spfRes, dmarcRes, dkimRes, webRes, blacklistRes, mxRecords] = await Promise.all([

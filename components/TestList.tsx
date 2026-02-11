@@ -53,50 +53,79 @@ function CategorySection({ category, activeCategory }: { category: CategoryResul
 
             {isOpen && (
                 <div className="divide-y divide-slate-800 border-t border-slate-800">
-                    {category.tests.map((test, idx) => (
-                        <div key={idx} className="p-4 hover:bg-slate-800/30 transition-colors">
-                            <div className="flex items-start">
-                                <div className="mr-3 mt-0.5 flex-shrink-0">
-                                    <StatusIcon status={test.status} />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between">
-                                        <p className={cn("text-sm font-bold", getStatusColor(test.status))}>
-                                            {test.name}
-                                        </p>
-                                        <span className={cn("hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase tracking-wide font-bold ml-2", getStatusBadge(test.status))}>
-                                            {test.status}
-                                        </span>
-                                    </div>
+                    {category.category === 'Blacklist' ? (
+                        <>
+                            {/* Grouping for Blacklist */}
+                            {['IP', 'DOMAIN'].map((type) => {
+                                const groupTests = category.tests.filter(t => t.type === type);
+                                if (groupTests.length === 0) return null;
 
-                                    {/* Primary Info (e.g., Raw Record) */}
-                                    <p className="text-xs text-slate-400 mt-1 break-all font-mono bg-slate-950/50 p-2 rounded border border-slate-800/50">
-                                        {test.info || "No raw data provided."}
-                                    </p>
-
-                                    {/* Detailed Reason & Recommendation for Errors/Warnings */}
-                                    {test.status !== 'Pass' && (
-                                        <div className="mt-3 space-y-2">
-                                            {test.reason && (
-                                                <div className="flex items-start gap-2 text-xs">
-                                                    <span className="font-bold text-rose-400 shrink-0 uppercase tracking-wider text-[10px] mt-0.5">Problem:</span>
-                                                    <span className="text-slate-300 leading-relaxed">{test.reason}</span>
-                                                </div>
-                                            )}
-                                            {test.recommendation && (
-                                                <div className="flex items-start gap-2 text-xs">
-                                                    <span className="font-bold text-emerald-400 shrink-0 uppercase tracking-wider text-[10px] mt-0.5">Solution:</span>
-                                                    <span className="text-slate-300 leading-relaxed">{test.recommendation}</span>
-                                                </div>
-                                            )}
+                                return (
+                                    <div key={type} className="bg-slate-900/50">
+                                        <div className="px-4 py-2 bg-slate-800/50 border-y border-slate-800">
+                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                                                {type === 'IP' ? 'IP Reputation (Mail Servers)' : 'Domain Reputation (RHSBL)'}
+                                            </span>
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+                                        {groupTests.map((test, idx) => (
+                                            <TestItem key={idx} test={test} />
+                                        ))}
+                                    </div>
+                                );
+                            })}
+                        </>
+                    ) : (
+                        category.tests.map((test, idx) => (
+                            <TestItem key={idx} test={test} />
+                        ))
+                    )}
                 </div>
             )}
+        </div>
+    );
+}
+
+function TestItem({ test }: { test: TestResult }) {
+    return (
+        <div className="p-4 hover:bg-slate-800/30 transition-colors">
+            <div className="flex items-start">
+                <div className="mr-3 mt-0.5 flex-shrink-0">
+                    <StatusIcon status={test.status} />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between">
+                        <p className={cn("text-sm font-bold", getStatusColor(test.status))}>
+                            {test.name}
+                        </p>
+                        <span className={cn("hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase tracking-wide font-bold ml-2", getStatusBadge(test.status))}>
+                            {test.status}
+                        </span>
+                    </div>
+
+                    {/* Primary Info (e.g., Raw Record) */}
+                    <p className="text-xs text-slate-400 mt-1 break-all font-mono bg-slate-950/50 p-2 rounded border border-slate-800/50">
+                        {test.info || "No raw data provided."}
+                    </p>
+
+                    {/* Detailed Reason & Recommendation for Errors/Warnings */}
+                    {test.status !== 'Pass' && (
+                        <div className="mt-3 space-y-2">
+                            {test.reason && (
+                                <div className="flex items-start gap-2 text-xs">
+                                    <span className="font-bold text-rose-400 shrink-0 uppercase tracking-wider text-[10px] mt-0.5">Problem:</span>
+                                    <span className="text-slate-300 leading-relaxed">{test.reason}</span>
+                                </div>
+                            )}
+                            {test.recommendation && (
+                                <div className="flex items-start gap-2 text-xs">
+                                    <span className="font-bold text-emerald-400 shrink-0 uppercase tracking-wider text-[10px] mt-0.5">Solution:</span>
+                                    <span className="text-slate-300 leading-relaxed">{test.recommendation}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
