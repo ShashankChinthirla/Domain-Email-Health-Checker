@@ -70,7 +70,7 @@ export function DomainChecker() {
     }, []);
 
 
-    const fetchDomainHealth = async (domain: string) => {
+    const fetchDomainHealth = async (domain: string, signal?: AbortSignal) => {
         // Sanitize domain
         const cleanDomain = domain.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '').trim();
 
@@ -79,11 +79,16 @@ export function DomainChecker() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ domain: cleanDomain }),
+                signal // Pass abort signal
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Failed');
             return data as FullHealthReport;
         } catch (error: any) {
+            if (error.name === 'AbortError') {
+                console.log('Request aborted');
+                return null;
+            }
             console.error(error);
             // If it's a manual check, show the error in UI
             if (error.message) setInputError(error.message);
@@ -150,6 +155,48 @@ export function DomainChecker() {
         setActiveCategory(category);
     };
 
+    // Bulk Control State
+    // Bulk Control State
+    const [bulkStatus, setBulkStatus] = useState<'idle' | 'running' | 'paused' | 'completed'>('idle');
+    const bulkControlRef = useRef<{ isPaused: boolean; isStopped: boolean }>({ isPaused: false, isStopped: false });
+    const bulkAbortController = useRef<AbortController | null>(null);
+    const bufferedResults = useRef<FullHealthReport[]>([]);
+    const bufferedProgressCount = useRef(0);
+
+    const handlePauseBulk = () => {
+        setBulkStatus('paused');
+        bulkControlRef.current.isPaused = true;
+    };
+
+    const handleResumeBulk = () => {
+        // Flush Buffers (Instant UI Update)
+        if (bufferedResults.current.length > 0) {
+            setBulkResults(prev => [...prev, ...bufferedResults.current]);
+            bufferedResults.current = [];
+        }
+        if (bufferedProgressCount.current > 0) {
+            setBulkProgress(prev => ({ ...prev, current: prev.current + bufferedProgressCount.current }));
+            bufferedProgressCount.current = 0;
+        }
+
+        setBulkStatus('running');
+        bulkControlRef.current.isPaused = false;
+    };
+
+    const handleStopBulk = () => {
+        setBulkStatus('idle'); // Hides banner
+        bulkControlRef.current.isStopped = true;
+        setIsBulkProcessing(false);
+        setLoading(false); // <--- FIX: Kill the global spinner
+        // KILL SWITCH: Abort all pending requests
+        if (bulkAbortController.current) {
+            bulkAbortController.current.abort();
+        }
+        // Clear buffers on stop
+        bufferedResults.current = [];
+        bufferedProgressCount.current = 0;
+    };
+
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -158,12 +205,17 @@ export function DomainChecker() {
         reader.onload = async (evt) => {
             setLoading(true);
             setIsBulkProcessing(true);
-            setCurrentSingleResult(null); // Clear single view
-            setBulkResults([]); // Reset
+            setBulkStatus('running');
+            bulkControlRef.current = { isPaused: false, isStopped: false };
+            bulkAbortController.current = new AbortController();
+            bufferedResults.current = [];
+            bufferedProgressCount.current = 0;
+
+            setCurrentSingleResult(null);
+            setBulkResults([]);
 
             try {
                 const bstr = evt.target?.result;
-                // Dynamic import to fix ChunkLoadError and optimize initial load
                 const XLSX = await import('xlsx');
                 const workbook = XLSX.read(bstr, { type: 'binary' });
                 const ws = workbook.Sheets[workbook.SheetNames[0]];
@@ -172,13 +224,23 @@ export function DomainChecker() {
                 const domains = data.map((row) => row['Domain'] || row['domain']).filter(Boolean);
                 setBulkProgress({ current: 0, total: domains.length });
 
-                const CONCURRENCY_LIMIT = 25;
+                const CONCURRENCY_LIMIT = 50; // Increased for speed
                 let activeCount = 0;
                 let currentIndex = 0;
                 const total = domains.length;
 
-                // Simple concurrency queue
                 const processNext = async () => {
+                    // STOP CHECK
+                    if (bulkControlRef.current.isStopped) return;
+
+                    // PAUSE CHECK (Strict)
+                    if (bulkControlRef.current.isPaused) {
+                        while (bulkControlRef.current.isPaused && !bulkControlRef.current.isStopped) {
+                            await new Promise(r => setTimeout(r, 100)); // Faster poll
+                        }
+                        if (bulkControlRef.current.isStopped) return;
+                    }
+
                     if (currentIndex >= total) return;
 
                     const index = currentIndex++;
@@ -186,23 +248,41 @@ export function DomainChecker() {
                     activeCount++;
 
                     try {
-                        const result = await fetchDomainHealth(domain);
+                        const signal = bulkAbortController.current?.signal;
+
+                        // Note: If paused, we DO NOT abort. We let it finish to save data.
+                        // But UI will be frozen via buffer.
+                        const result = await fetchDomainHealth(domain, signal);
+
+                        // IGNORE RESULT IF STOPPED
+                        if (bulkControlRef.current.isStopped) return;
+
                         if (result) {
-                            setBulkResults(prev => [...prev, result]);
+                            // VISUAL FREEZE: If paused, buffer it. Don't show it.
+                            if (bulkControlRef.current.isPaused) {
+                                bufferedResults.current.push(result);
+                            } else {
+                                setBulkResults(prev => [...prev, result]);
+                            }
                         }
                     } catch (err) {
                         console.error(`Failed to process ${domain}`, err);
                     } finally {
-                        setBulkProgress(prev => ({ ...prev, current: prev.current + 1 }));
+                        // VISUAL FREEZE: If paused, don't update visible progress.
+                        if (bulkControlRef.current.isPaused && !bulkControlRef.current.isStopped) {
+                            bufferedProgressCount.current += 1;
+                        } else {
+                            setBulkProgress(prev => ({ ...prev, current: prev.current + 1 }));
+                        }
+
                         activeCount--;
-                        // Trigger next if available
-                        if (currentIndex < total) {
+
+                        if (!bulkControlRef.current.isStopped && currentIndex < total) {
                             await processNext();
                         }
                     }
                 };
 
-                // Start initial batch to fill the pipe
                 const initialPromises = [];
                 for (let i = 0; i < Math.min(CONCURRENCY_LIMIT, total); i++) {
                     initialPromises.push(processNext());
@@ -210,18 +290,23 @@ export function DomainChecker() {
 
                 await new Promise<void>((resolve) => {
                     const checkDone = setInterval(() => {
-                        if (currentIndex >= total && activeCount === 0) {
+                        if ((currentIndex >= total || bulkControlRef.current.isStopped) && activeCount === 0) {
                             clearInterval(checkDone);
+                            setLoading(false);
+                            // Only mark complete if NOT stopped manually
+                            if (!bulkControlRef.current.isStopped) {
+                                setBulkStatus('completed');
+                            }
                             resolve();
                         }
-                    }, 100);
+                    }, 500);
                 });
 
             } catch (e) {
                 setInputError('Upload Failed: Ensure Excel has a "Domain" column.');
-            } finally {
                 setLoading(false);
                 setIsBulkProcessing(false);
+                setBulkStatus('idle');
             }
         };
         reader.readAsBinaryString(file);
@@ -283,7 +368,7 @@ export function DomainChecker() {
             />
 
             {/* --- TITANIUM ORBITAL LOADING OVERLAY --- */}
-            {loading && (
+            {(loading && (!isBulkProcessing || bulkResults.length === 0)) && (
                 <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center overflow-hidden">
                     {/* Background Ambient Plasma */}
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white/5 via-transparent to-transparent opacity-50 animate-pulse" />
@@ -330,11 +415,11 @@ export function DomainChecker() {
                         {isBulkProcessing ? (
                             <>
                                 <h2 className="text-4xl md:text-5xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/40 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                    BATCH PROCESSING
+                                    INITIALIZING BATCH
                                 </h2>
                                 <div className="flex flex-col items-center gap-2">
                                     <p className="text-white font-mono text-lg font-bold">
-                                        ANALYZING DOMAIN {bulkProgress.current} OF {bulkProgress.total}
+                                        PREPARING {bulkProgress.total} DOMAINS...
                                     </p>
                                 </div>
                             </>
@@ -349,6 +434,71 @@ export function DomainChecker() {
                             <span>System Active</span>
                             <span className="text-white/10">|</span>
                             <span>SEQ_ID: {Math.random().toString(36).substring(7).toUpperCase()}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- ADVANCED BULK CONTROL BANNER --- */}
+            {bulkStatus !== 'idle' && (
+                <div className="fixed top-24 left-0 right-0 z-50 px-4 sm:px-6 animate-in slide-in-from-top duration-500 pointer-events-none flex justify-center">
+                    <div className="w-full max-w-7xl flex items-center justify-between gap-4 p-4 bg-[#09090b]/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl pointer-events-auto ring-1 ring-white/5">
+
+                        <div className="flex items-center gap-5">
+                            <div className="relative w-10 h-10 flex items-center justify-center shrink-0">
+                                {bulkStatus === 'running' ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 text-emerald-500 animate-spin" />
+                                        <svg className="absolute inset-0 w-full h-full -rotate-90">
+                                            <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.1)" strokeWidth="3" fill="none" />
+                                            <circle cx="20" cy="20" r="18" stroke="#10b981" strokeWidth="3" fill="none" strokeLinecap="round" strokeDasharray="113" strokeDashoffset={113 - (113 * (bulkProgress.current / Math.max(bulkProgress.total, 1)))} className="transition-all duration-300" />
+                                        </svg>
+                                    </>
+                                ) : bulkStatus === 'paused' ? (
+                                    <div className="w-10 h-10 rounded-full border-2 border-yellow-500/50 flex items-center justify-center">
+                                        <div className="w-3 h-3 bg-yellow-500 rounded-[1px]" />
+                                    </div>
+                                ) : (
+                                    <div className="w-10 h-10 rounded-full border-2 border-emerald-500/50 flex items-center justify-center">
+                                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex flex-col min-w-0">
+                                <h3 className="text-white font-bold text-base leading-tight tracking-tight truncate">
+                                    {bulkStatus === 'paused' ? 'Batch Paused' : bulkStatus === 'completed' ? 'Batch Complete' : 'Processing Batch...'}
+                                </h3>
+                                <div className="flex items-center gap-3 text-sm text-slate-400 font-mono mt-0.5 whitespace-nowrap">
+                                    <span>{bulkProgress.current} / {bulkProgress.total}</span>
+                                    <span className="w-1 h-1 bg-white/20 rounded-full" />
+                                    <span className={cn("font-bold", bulkStatus === 'completed' ? "text-emerald-500" : "text-white")}>
+                                        {Math.round((bulkProgress.current / bulkProgress.total) * 100)}%
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            {/* PAUSE / RESUME */}
+                            {bulkStatus === 'running' && (
+                                <button onClick={handlePauseBulk} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all active:scale-95">
+                                    <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+                                </button>
+                            )}
+                            {bulkStatus === 'paused' && (
+                                <button onClick={handleResumeBulk} className="w-10 h-10 flex items-center justify-center rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-500 transition-all active:scale-95">
+                                    <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                </button>
+                            )}
+
+                            {/* STOP (KILL) */}
+                            <button
+                                onClick={handleStopBulk}
+                                className="px-5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-xl text-xs font-bold border border-rose-500/20 transition-all hover:scale-105 active:scale-95 tracking-wider uppercase"
+                            >
+                                {bulkStatus === 'completed' ? 'Close' : 'Stop & Export'}
+                            </button>
                         </div>
                     </div>
                 </div>

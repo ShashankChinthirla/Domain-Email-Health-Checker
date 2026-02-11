@@ -27,9 +27,9 @@ function cachedResolve<T>(
     }
 
     // New Request
-    // TIMEOUT WRAPPER: Force fail after 2000ms to prevent long hangs on bad domains
+    // TIMEOUT WRAPPER: Force fail after 10000ms to prevent long hangs on bad domains
     const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('DNS Timeout')), 5000)
+        setTimeout(() => reject(new Error('DNS Timeout')), 10000)
     );
 
     const promise = Promise.race([resolveFn(), timeoutPromise])

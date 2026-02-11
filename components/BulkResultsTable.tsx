@@ -16,13 +16,14 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
 
     // Filter Logic
     const filteredResults = results.filter(r => {
-        // Redefine "Clean": Score > 95, Clean SPF, Clean DMARC, Clean Blacklist (Errors Only Checked)
-        // Warnings are allowed if score is high and critical components are error-free.
-        const spfErrors = r.categories.spf?.stats.errors || 0;
-        const dmarcErrors = r.categories.dmarc?.stats.errors || 0;
-        const blacklistErrors = r.categories.blacklist?.stats.errors || 0;
+        // Redefine "Clean" based on user input:
+        // "if all are good like green and yellow then keep them in clean only red/error in the error session"
+        // Meaning: Clean = No Errors (Warnings OK). Errors = Has Errors.
 
-        const isClean = r.score > 95 && spfErrors === 0 && dmarcErrors === 0 && blacklistErrors === 0;
+        const allCats = Object.values(r.categories);
+        const errors = allCats.reduce((acc, cat) => acc + cat.stats.errors, 0);
+
+        const isClean = errors === 0;
 
         if (filter === 'clean') return isClean;
         if (filter === 'issues') return !isClean;
@@ -37,11 +38,8 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
             const warnings = allCats.reduce((acc, cat) => acc + cat.stats.warnings, 0);
 
             // Re-check clean status for export formatting
-            const spfErrors = r.categories.spf?.stats.errors || 0;
-            const dmarcErrors = r.categories.dmarc?.stats.errors || 0;
-            const blacklistErrors = r.categories.blacklist?.stats.errors || 0;
-            // NOTE: Using the same logic as filter above
-            const isClean = r.score > 95 && spfErrors === 0 && dmarcErrors === 0 && blacklistErrors === 0;
+            // NOTE: Using the same logic as filter above (Clean = 0 errors)
+            const isClean = errors === 0;
 
             // Clean Export Mode
             if (filter === 'clean') {

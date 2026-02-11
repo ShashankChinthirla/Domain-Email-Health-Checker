@@ -35,11 +35,11 @@ export async function checkDNSBL(ip: string): Promise<BlacklistResult[]> {
         }
     });
 
-    // Global 3s Timeout Race
-    // If it takes longer than 3s, valid results are discarded and we return "Clean" (Pass)
+    // Global 8s Timeout Race
+    // If it takes longer than 8s, valid results are discarded and we return "Clean" (Pass)
     // to prevent user waiting.
     const timeoutPromise = new Promise<string>((resolve) =>
-        setTimeout(() => resolve('TIMEOUT'), 2500)
+        setTimeout(() => resolve('TIMEOUT'), 8000)
     );
 
     const result = await Promise.race([
