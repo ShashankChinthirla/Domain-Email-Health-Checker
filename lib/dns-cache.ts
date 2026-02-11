@@ -1,4 +1,8 @@
-import { promises as dnsPromises, MxRecord, SoaRecord, CaaRecord, setServers as _setServers } from 'dns';
+import { promises as dnsPromises, MxRecord, SoaRecord, CaaRecord } from 'dns';
+
+// Custom Resolver with explicit public servers for reliability on Vercel
+const resolver = new dnsPromises.Resolver();
+resolver.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
 
 // Cache structure: Key -> { promise, timestamp, data }
 interface CacheEntry<T> {
@@ -12,8 +16,8 @@ const cache = new Map<string, CacheEntry<any>>();
 const TTL = 10 * 60 * 1000; // 10 Minutes
 
 // Global DNS Concurrency Control
-// Increased to 128 to handle bulk bursts better while still avoiding OS exhaustion
-const MAX_CONCURRENT_QUERIES = 128;
+// Lowered to 32 for Vercel stability (better to be safe than throttled)
+const MAX_CONCURRENT_QUERIES = 32;
 let runningQueries = 0;
 const queryQueue: ((value: void | PromiseLike<void>) => void)[] = [];
 
@@ -36,10 +40,13 @@ function releaseSlot(): void {
     }
 }
 
-// Generic wrapper to cache DNS calls
+/**
+ * Generic wrapper to cache DNS calls with global concurrency and retry logic
+ */
 async function cachedResolve<T>(
     key: string,
-    resolveFn: () => Promise<T>
+    resolveFn: () => Promise<T>,
+    retryCount = 1
 ): Promise<T> {
     const now = Date.now();
     const headersKey = `DNS:${key}`;
@@ -51,27 +58,40 @@ async function cachedResolve<T>(
         return entry.promise;
     }
 
-    // New Request
-    // TIMEOUT WRAPPER: Force fail after 2500ms for Vercel compatibility
-    const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('DNS Timeout')), 2500)
-    );
-
     const promise = (async () => {
-        await acquireSlot();
-        try {
-            return await Promise.race([resolveFn(), timeoutPromise]);
-        } finally {
-            releaseSlot();
+        let lastError: any;
+
+        for (let attempt = 0; attempt <= retryCount; attempt++) {
+            await acquireSlot();
+
+            // TIMEOUT WRAPPER: 3000ms
+            const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('DNS Timeout')), 3000)
+            );
+
+            try {
+                return await Promise.race([resolveFn(), timeoutPromise]);
+            } catch (err: any) {
+                lastError = err;
+                // Only retry on timeouts or common temporary DNS errors
+                const shouldRetry = attempt < retryCount &&
+                    (err.message === 'DNS Timeout' || err.code === 'ETIMEOUT' || err.code === 'ESERVFAIL');
+
+                if (!shouldRetry) throw err;
+
+                // Wait briefly before retry
+                await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+            } finally {
+                releaseSlot();
+            }
         }
+        throw lastError;
     })()
         .then(data => {
-            // Update cache with data on success
             cache.set(headersKey, { promise, timestamp: Date.now(), data });
             return data;
         })
         .catch(err => {
-            // On error, remove from cache so we retry next time
             cache.delete(headersKey);
             throw err;
         });
@@ -82,35 +102,33 @@ async function cachedResolve<T>(
 
 // Exported wrappers matching used methods
 export async function resolve4(hostname: string): Promise<string[]> {
-    return cachedResolve(`A:${hostname}`, () => dnsPromises.resolve4(hostname));
+    return cachedResolve(`A:${hostname}`, () => resolver.resolve4(hostname));
 }
 
 export async function resolve6(hostname: string): Promise<string[]> {
-    return cachedResolve(`AAAA:${hostname}`, () => dnsPromises.resolve6(hostname));
+    return cachedResolve(`AAAA:${hostname}`, () => resolver.resolve6(hostname));
 }
 
 export async function resolveMx(hostname: string): Promise<MxRecord[]> {
-    return cachedResolve(`MX:${hostname}`, () => dnsPromises.resolveMx(hostname));
+    return cachedResolve(`MX:${hostname}`, () => resolver.resolveMx(hostname));
 }
 
 export async function resolveTxt(hostname: string): Promise<string[][]> {
-    return cachedResolve(`TXT:${hostname}`, () => dnsPromises.resolveTxt(hostname));
+    return cachedResolve(`TXT:${hostname}`, () => resolver.resolveTxt(hostname));
 }
 
 export async function resolveNs(hostname: string): Promise<string[]> {
-    return cachedResolve(`NS:${hostname}`, () => dnsPromises.resolveNs(hostname));
+    return cachedResolve(`NS:${hostname}`, () => resolver.resolveNs(hostname));
 }
 
 export async function resolveCname(hostname: string): Promise<string[]> {
-    return cachedResolve(`CNAME:${hostname}`, () => dnsPromises.resolveCname(hostname));
+    return cachedResolve(`CNAME:${hostname}`, () => resolver.resolveCname(hostname));
 }
 
 export async function resolveSoa(hostname: string): Promise<SoaRecord> {
-    return cachedResolve(`SOA:${hostname}`, () => dnsPromises.resolveSoa(hostname));
+    return cachedResolve(`SOA:${hostname}`, () => resolver.resolveSoa(hostname));
 }
 
 export async function resolveCaa(hostname: string): Promise<CaaRecord[]> {
-    return cachedResolve(`CAA:${hostname}`, () => dnsPromises.resolveCaa(hostname));
+    return cachedResolve(`CAA:${hostname}`, () => resolver.resolveCaa(hostname));
 }
-
-export const setServers = _setServers; // Pass-through

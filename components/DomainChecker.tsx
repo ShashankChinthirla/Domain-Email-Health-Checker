@@ -241,7 +241,7 @@ export function DomainChecker() {
                 const domains = data.map((row) => row['Domain'] || row['domain']).filter(Boolean);
                 setBulkProgress({ current: 0, total: domains.length });
 
-                const CONCURRENCY_LIMIT = 10; // Lowest limit for maximum stability on Vercel Hobby
+                const CONCURRENCY_LIMIT = 8; // Ultra-safe limit for Vercel Hobby stability
                 let activeCount = 0;
                 let currentIndex = 0;
                 const total = domains.length;
@@ -642,7 +642,7 @@ export function DomainChecker() {
                             <ShieldCheck className="w-6 h-6 text-emerald-500" />
                             <span>DOMAINGUARD <span className="text-white/40 font-medium">PRO</span></span>
                         </div>
-                        <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.2-stable • Vercel-Optimized DNS Engine</p>
+                        <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.3-stable • Custom DNS Engine</p>
                     </div>
 
                     <div className="flex items-center gap-8 text-white/40 text-xs font-mono uppercase tracking-widest">
