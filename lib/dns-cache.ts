@@ -1,9 +1,5 @@
 import { promises as dnsPromises, MxRecord, SoaRecord, CaaRecord } from 'dns';
 
-// Custom Resolver with explicit public servers for reliability on Vercel
-const resolver = new dnsPromises.Resolver();
-resolver.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
-
 // Cache structure: Key -> { promise, timestamp, data }
 interface CacheEntry<T> {
     promise: Promise<T>;
@@ -64,9 +60,9 @@ async function cachedResolve<T>(
         for (let attempt = 0; attempt <= retryCount; attempt++) {
             await acquireSlot();
 
-            // TIMEOUT WRAPPER: 3000ms
+            // TIMEOUT WRAPPER: 5000ms (Relaxed for Vercel environment)
             const timeoutPromise = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('DNS Timeout')), 3000)
+                setTimeout(() => reject(new Error('DNS Timeout')), 5000)
             );
 
             try {
@@ -102,33 +98,37 @@ async function cachedResolve<T>(
 
 // Exported wrappers matching used methods
 export async function resolve4(hostname: string): Promise<string[]> {
-    return cachedResolve(`A:${hostname}`, () => resolver.resolve4(hostname));
+    return cachedResolve(`A:${hostname}`, () => dnsPromises.resolve4(hostname));
 }
 
 export async function resolve6(hostname: string): Promise<string[]> {
-    return cachedResolve(`AAAA:${hostname}`, () => resolver.resolve6(hostname));
+    return cachedResolve(`AAAA:${hostname}`, () => dnsPromises.resolve6(hostname));
 }
 
 export async function resolveMx(hostname: string): Promise<MxRecord[]> {
-    return cachedResolve(`MX:${hostname}`, () => resolver.resolveMx(hostname));
+    return cachedResolve(`MX:${hostname}`, () => dnsPromises.resolveMx(hostname));
 }
 
 export async function resolveTxt(hostname: string): Promise<string[][]> {
-    return cachedResolve(`TXT:${hostname}`, () => resolver.resolveTxt(hostname));
+    return cachedResolve(`TXT:${hostname}`, () => dnsPromises.resolveTxt(hostname));
 }
 
 export async function resolveNs(hostname: string): Promise<string[]> {
-    return cachedResolve(`NS:${hostname}`, () => resolver.resolveNs(hostname));
+    return cachedResolve(`NS:${hostname}`, () => dnsPromises.resolveNs(hostname));
 }
 
 export async function resolveCname(hostname: string): Promise<string[]> {
-    return cachedResolve(`CNAME:${hostname}`, () => resolver.resolveCname(hostname));
+    return cachedResolve(`CNAME:${hostname}`, () => dnsPromises.resolveCname(hostname));
 }
 
 export async function resolveSoa(hostname: string): Promise<SoaRecord> {
-    return cachedResolve(`SOA:${hostname}`, () => resolver.resolveSoa(hostname));
+    return cachedResolve(`SOA:${hostname}`, () => dnsPromises.resolveSoa(hostname));
 }
 
 export async function resolveCaa(hostname: string): Promise<CaaRecord[]> {
-    return cachedResolve(`CAA:${hostname}`, () => resolver.resolveCaa(hostname));
+    return cachedResolve(`CAA:${hostname}`, () => dnsPromises.resolveCaa(hostname));
 }
+
+// setServers is a dummy/unsupported when using native promises directly for some providers,
+// but we keep the export for compatibility if needed.
+export const setServers = (servers: string[]) => { /* No-op to avoid breaking Vercel */ };
