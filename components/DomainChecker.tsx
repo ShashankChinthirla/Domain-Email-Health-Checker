@@ -356,6 +356,13 @@ export function DomainChecker() {
     // Helper generators
     const generateUpdatedSpf = (raw: string | null) => raw ? raw.replace(/-all|\?all/g, '~all') : 'v=spf1 a mx ~all';
     const generateUpdatedDmarc = (raw: string | null, domain: string) => {
+        // If current record is already strong, don't recommend a "fix" that is identical
+        const isAlreadyStrict = raw?.includes('p=reject') || (raw?.includes('p=quarantine') && raw?.includes('pct=100'));
+
+        if (isAlreadyStrict && !raw?.includes('p=none')) {
+            return raw || '';
+        }
+
         let rua = `mailto:dmarc-reports@${domain}`;
         let ruf = '';
         if (raw) {
@@ -600,8 +607,10 @@ export function DomainChecker() {
                             updatedSpf={generateUpdatedSpf(currentSingleResult.rawSpf)}
                             rawDmarc={currentSingleResult.rawDmarc}
                             updatedDmarc={generateUpdatedDmarc(currentSingleResult.rawDmarc, currentSingleResult.domain)}
-                            spfSecure={currentSingleResult.categories.spf.tests.every(t => t.status === 'Pass')}
-                            dmarcSecure={currentSingleResult.categories.dmarc.tests.every(t => t.status === 'Pass')}
+                            // Nuanced Security: Only "Insecure" if there are actual ERRORS.
+                            // Warnings (like rua missing or external auth) should NOT trigger the red "Insecure" banner here.
+                            spfSecure={!currentSingleResult.categories.spf.tests.some(t => t.status === 'Error')}
+                            dmarcSecure={!currentSingleResult.categories.dmarc.tests.some(t => t.status === 'Error')}
                         />
 
                         {/* 2. VERDICT BANNER (Secondary - Pushed down to require scroll) */}
@@ -666,7 +675,7 @@ export function DomainChecker() {
                             <ShieldCheck className="w-6 h-6 text-emerald-500" />
                             <span>DOMAINGUARD <span className="text-white/40 font-medium">PRO</span></span>
                         </div>
-                        <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.7-stable • Titanium Zero-Timeout Core</p>
+                        <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.8-stable • Smart Verification Core</p>
                     </div>
 
                     <div className="flex items-center gap-8 text-white/40 text-xs font-mono uppercase tracking-widest">
