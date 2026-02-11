@@ -82,6 +82,30 @@ export function DomainChecker() {
                 signal // Pass abort signal
             });
             const data = await response.json();
+
+            // Handle Global Timeout (Partial Result)
+            if (data.status === 'partial') {
+                const fallback: FullHealthReport = {
+                    domain: cleanDomain,
+                    score: 0,
+                    rawSpf: null,
+                    rawDmarc: null,
+                    dmarcPolicy: null,
+                    mxRecords: [],
+                    categories: {
+                        problems: { category: 'Problems', tests: [{ name: 'Server Timeout', status: 'Error', info: 'Vercel Limit', reason: 'DNS checks took too long (10s limit).', recommendation: 'Try a single domain check.' }], stats: { passed: 0, warnings: 0, errors: 1 } },
+                        dns: { category: 'DNS', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        spf: { category: 'SPF', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        dmarc: { category: 'DMARC', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        dkim: { category: 'DKIM', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        blacklist: { category: 'Blacklist', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        webServer: { category: 'Web Server', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        smtp: { category: 'SMTP', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } }
+                    }
+                };
+                return fallback;
+            }
+
             if (!response.ok) throw new Error(data.error || 'Failed');
             return data as FullHealthReport;
         } catch (error: any) {
@@ -642,7 +666,7 @@ export function DomainChecker() {
                             <ShieldCheck className="w-6 h-6 text-emerald-500" />
                             <span>DOMAINGUARD <span className="text-white/40 font-medium">PRO</span></span>
                         </div>
-                        <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.6-stable • Strict DNS Core</p>
+                        <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.7-stable • Titanium Zero-Timeout Core</p>
                     </div>
 
                     <div className="flex items-center gap-8 text-white/40 text-xs font-mono uppercase tracking-widest">

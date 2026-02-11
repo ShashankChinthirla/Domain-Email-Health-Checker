@@ -52,6 +52,22 @@ async function resolveTxtWithRetry(domain: string): Promise<string[][]> {
     }
 }
 
+// Global Guard: Hard Timeout Helper
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, defaultValue: T, category: string): Promise<T> {
+    let timeoutHandle: any;
+    const timeoutPromise = new Promise<T>((resolve) => {
+        timeoutHandle = setTimeout(() => {
+            console.warn(`[TIMEOUT] Category ${category} exceeded ${timeoutMs}ms. Returning partial results.`);
+            resolve(defaultValue);
+        }, timeoutMs);
+    });
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        clearTimeout(timeoutHandle);
+    }
+}
+
 // --- 1. DNS Tests (Expanded - Deep Analysis) ---
 async function runDNSTests(domain: string): Promise<TestResult[]> {
     // Parallelize all independent DNS lookups
@@ -971,24 +987,64 @@ async function runWebServerTests(domain: string): Promise<TestResult[]> {
 
 // --- Main Runner Orchestrator ---
 export async function runFullHealthCheck(domain: string): Promise<FullHealthReport> {
+    // 1. Initial independent tests (Immediate Parallel)
+    // We wrap each in withTimeout to ensure logic never hangs
+    const pDNS = withTimeout(runDNSTests(domain), 3000, [{
+        name: 'DNS Check', status: 'Warning', info: 'Timed Out', reason: 'DNS tests took too long.', recommendation: 'Refresh to retry.'
+    }], 'DNS');
 
-    // 1. Trigger all independent tests immediately (Parallel Execution)
-    const pDNS = runDNSTests(domain);
-    const pSPF = runSPFTests(domain);
-    const pDMARC = runDMARCTests(domain);
-    const pDKIM = runDKIMTests(domain);
-    const pWeb = runWebServerTests(domain);
+    const pSPF = withTimeout(runSPFTests(domain), 4000, {
+        rawSpf: null,
+        tests: [{ name: 'SPF Check', status: 'Warning', info: 'Timed Out', reason: 'SPF check exceeded time limit.', recommendation: 'Try again.' }]
+    }, 'SPF');
 
-    // 2. Resolve MX independently for Blacklist (Critical Path for speed)
-    // We don't wait for pDNS to finish to get MX records for blacklist.
-    // We run a dedicated MX lookup to unblock blacklist check ASAP.
-    const mxLookupForBlacklist = dns.resolveMx(domain)
+    const pDMARC = withTimeout(runDMARCTests(domain), 4000, {
+        rawDmarc: null,
+        tests: [{ name: 'DMARC Check', status: 'Warning', info: 'Timed Out', reason: 'DMARC check exceeded time limit.', recommendation: 'Try again.' }]
+    }, 'DMARC');
+
+    const pDKIM = withTimeout(runDKIMTests(domain), 3000, [{
+        name: 'DKIM Check', status: 'Warning', info: 'Timed Out', reason: 'DKIM selectors check took too long.', recommendation: 'No action needed.'
+    }], 'DKIM');
+
+    const pWeb = withTimeout(runWebServerTests(domain), 4000, [{
+        name: 'Web Server', status: 'Warning', info: 'Timed Out', reason: 'Web server checks exceeded 4s.', recommendation: 'Check site manually.'
+    }], 'Web');
+
+    // 2. Blacklist Logic (Parallel & Decoupled)
+    // Run domain blacklist immediately
+    const pDomainBlacklist = withTimeout(checkDomainBlacklist(domain), 4000, [], 'DomainBlacklist');
+
+    // Resolve MX and run IP blacklist as soon as ready
+    const mxLookup = dns.resolveMx(domain)
         .then(mxs => mxs.sort((a, b) => a.priority - b.priority).map(m => m.exchange))
         .catch(() => [] as string[]);
 
-    const pBlacklist = mxLookupForBlacklist.then(mxs => runBlacklistTestsWithMX(domain, mxs));
+    const pIpBlacklist = mxLookup.then(async (mxs) => {
+        if (mxs.length === 0) return [];
+        return withTimeout(runBlacklistTestsWithMX(domain, mxs), 5000, [], 'IPBlacklist');
+    });
 
-    // 3. Await all
+    // Combined Blacklist Resolver
+    const pBlacklist = Promise.all([
+        pDomainBlacklist.then(res => res.map(bl => ({
+            name: bl.list,
+            status: bl.status === 'FAIL' ? 'Error' : bl.status === 'TIMEOUT' ? 'Warning' : 'Pass',
+            info: bl.status === 'FAIL' ? 'Listed' : (bl.status === 'PASS' ? 'Clean' : bl.status),
+            reason: bl.details || `${bl.target} is ${bl.status === 'FAIL' ? 'listed' : 'clean'} on ${bl.list}`,
+            recommendation: bl.status === 'FAIL' ? 'Investigate listing.' : 'No action needed.',
+            category: 'Blacklist'
+        }))),
+        pIpBlacklist.then(res => res as TestResult[]) // IP list already returns TestResult[]
+    ]).then(([domainRes, ipRes]) => {
+        const results = [...domainRes, ...ipRes];
+        if (results.length === 0) {
+            return [{ name: 'Blacklist Check', status: 'Warning' as TestStatus, info: 'Timed Out', reason: 'Blacklist check took too long.', recommendation: 'Refresh to retry.' }];
+        }
+        return results;
+    }) as Promise<TestResult[]>;
+
+    // 3. Await all with a Final Promise.all
     const [dnsResults, spfRes, dmarcRes, dkimRes, webRes, blacklistRes, mxRecords] = await Promise.all([
         pDNS,
         pSPF,
@@ -996,7 +1052,7 @@ export async function runFullHealthCheck(domain: string): Promise<FullHealthRepo
         pDKIM,
         pWeb,
         pBlacklist,
-        mxLookupForBlacklist
+        mxLookup
     ]);
 
 
