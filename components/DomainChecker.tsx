@@ -549,79 +549,113 @@ export function DomainChecker() {
                 <div className="pt-20 pb-24 min-h-screen">
 
                     {/* Domain Result Header (LEFT ALIGNED) */}
-                    Comprehensive security diagnostic report.
-                </p>
+                    <div className="max-w-7xl mx-auto px-6 w-full flex flex-col items-start mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="flex flex-col gap-2 w-full">
+                            <div className="flex items-center gap-2 text-white/40 text-xs font-mono uppercase tracking-widest justify-start">
+                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                                Analysis Complete
+                                <span className="text-white/10">|</span>
+                                {new Date().toLocaleDateString()}
+                            </div>
+                            <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
+                                {currentSingleResult.domain}
+                            </h1>
+                            <p className="text-white/50 text-lg">
+                                Comprehensive security diagnostic report.
+                            </p>
                         </div>
-                    </div >
+                    </div>
 
-        {/* Results Container */ }
-        < div ref = { resultsRef } className = "max-w-7xl mx-auto px-6 animate-in fade-in slide-in-from-bottom-8 duration-500 space-y-8" >
+                    {/* Results Container */}
+                    <div ref={resultsRef} className="max-w-7xl mx-auto px-6 animate-in fade-in slide-in-from-bottom-8 duration-500 space-y-8">
 
-            {/* 1. TECHNICAL CONFIGURATION (Top Priority) */ }
-            < TechnicalConfig
-    domain = { currentSingleResult.domain }
-    rawSpf = { currentSingleResult.rawSpf }
-    updatedSpf = { generateUpdatedSpf(currentSingleResult.rawSpf) }
-    rawDmarc = { currentSingleResult.rawDmarc }
-    updatedDmarc = { generateUpdatedDmarc(currentSingleResult.rawDmarc, currentSingleResult.domain) }
-    spfSecure = { currentSingleResult.categories.spf.tests.every(t => t.status === 'Pass') }
-    dmarcSecure = { currentSingleResult.categories.dmarc.tests.every(t => t.status === 'Pass') }
-        />
+                        {/* 1. TECHNICAL CONFIGURATION (Top Priority) */}
+                        <TechnicalConfig
+                            domain={currentSingleResult.domain}
+                            rawSpf={currentSingleResult.rawSpf}
+                            updatedSpf={generateUpdatedSpf(currentSingleResult.rawSpf)}
+                            rawDmarc={currentSingleResult.rawDmarc}
+                            updatedDmarc={generateUpdatedDmarc(currentSingleResult.rawDmarc, currentSingleResult.domain)}
+                            spfSecure={currentSingleResult.categories.spf.tests.every(t => t.status === 'Pass')}
+                            dmarcSecure={currentSingleResult.categories.dmarc.tests.every(t => t.status === 'Pass')}
+                        />
 
-        {/* 2. VERDICT BANNER (Secondary - Pushed down to require scroll) */ }
-        < div className = "mt-32" >
-            <VerdictBanner report={currentSingleResult} />
-                        </div >
+                        {/* 2. VERDICT BANNER (Secondary - Pushed down to require scroll) */}
+                        <div className="mt-32">
+                            <VerdictBanner report={currentSingleResult} />
+                        </div>
 
-        {/* 3. COLLAPSED DETAILS */ }
-        < div className = "pt-8 border-t border-white/10 mt-12 mb-24" >
-            <button
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="w-full flex items-center justify-between text-white/60 hover:text-white transition-colors py-4 group bg-[#1c1c1e] border border-white/10 rounded-xl px-6 shadow-sm hover:border-white/20"
-            >
-                <span className="text-sm font-bold uppercase tracking-widest">Advanced Technical Details</span>
-                <div className="flex items-center gap-2 text-sm font-medium opacity-70 group-hover:opacity-100">
-                    {showAdvanced ? "Hide Report" : "Show Full Report"}
-                    {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        {/* 3. COLLAPSED DETAILS */}
+                        <div className="pt-8 border-t border-white/10 mt-12 mb-24">
+                            <button
+                                onClick={() => setShowAdvanced(!showAdvanced)}
+                                className="w-full flex items-center justify-between text-white/60 hover:text-white transition-colors py-4 group bg-[#1c1c1e] border border-white/10 rounded-xl px-6 shadow-sm hover:border-white/20"
+                            >
+                                <span className="text-sm font-bold uppercase tracking-widest">Advanced Technical Details</span>
+                                <div className="flex items-center gap-2 text-sm font-medium opacity-70 group-hover:opacity-100">
+                                    {showAdvanced ? "Hide Report" : "Show Full Report"}
+                                    {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </div>
+                            </button>
+
+                            {
+                                showAdvanced && (
+                                    <div className="space-y-12 pt-8 animate-in fade-in slide-in-from-top-4 duration-300">
+
+                                        <ProblemsSection problems={currentSingleResult.categories.problems} />
+                                        <HealthSummary
+                                            categories={[
+                                                currentSingleResult.categories.dmarc,
+                                                currentSingleResult.categories.spf,
+                                                currentSingleResult.categories.dkim,
+                                                currentSingleResult.categories.smtp,
+                                                currentSingleResult.categories.webServer,
+                                                currentSingleResult.categories.dns,
+                                                currentSingleResult.categories.blacklist
+                                            ].filter(Boolean)}
+                                            onCategoryClick={scrollToCategory}
+                                        />
+                                        <TestList
+                                            activeCategory={activeCategory}
+                                            categories={[
+                                                currentSingleResult.categories.dns,
+                                                currentSingleResult.categories.spf,
+                                                currentSingleResult.categories.dmarc,
+                                                currentSingleResult.categories.dkim,
+                                                currentSingleResult.categories.webServer,
+                                                currentSingleResult.categories.blacklist,
+                                                currentSingleResult.categories.smtp
+                                            ].filter(Boolean)} />
+                                    </div>
+                                )
+                            }
+                        </div>
+                    </div>
                 </div>
-            </button>
+            )}
 
-    {
-        showAdvanced && (
-            <div className="space-y-12 pt-8 animate-in fade-in slide-in-from-top-4 duration-300">
+            {/* --- FOOTER --- */}
+            <footer className="relative z-10 border-t border-white/5 bg-black/50 backdrop-blur-xl mt-auto">
+                <div className="max-w-7xl mx-auto px-6 py-12 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex flex-col items-center md:items-start gap-2">
+                        <div className="flex items-center gap-2 text-white/80 font-bold tracking-tight text-xl">
+                            <ShieldCheck className="w-6 h-6 text-emerald-500" />
+                            <span>DOMAINGUARD <span className="text-white/40 font-medium">PRO</span></span>
+                        </div>
+                        <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.2-stable • Vercel-Optimized DNS Engine</p>
+                    </div>
 
-                <ProblemsSection problems={currentSingleResult.categories.problems} />
-                <HealthSummary
-                    categories={[
-                        currentSingleResult.categories.dmarc,
-                        currentSingleResult.categories.spf,
-                        currentSingleResult.categories.dkim,
-                        currentSingleResult.categories.smtp,
-                        currentSingleResult.categories.webServer,
-                        currentSingleResult.categories.dns,
-                        currentSingleResult.categories.blacklist
-                    ].filter(Boolean)}
-                    onCategoryClick={scrollToCategory}
-                />
-                <TestList
-                    activeCategory={activeCategory}
-                    categories={[
-                        currentSingleResult.categories.dns,
-                        currentSingleResult.categories.spf,
-                        currentSingleResult.categories.dmarc,
-                        currentSingleResult.categories.dkim,
-                        currentSingleResult.categories.webServer,
-                        currentSingleResult.categories.blacklist,
-                        currentSingleResult.categories.smtp
-                    ].filter(Boolean)} />
-            </div>
-        )
-    }
-                        </div >
-                    </div >
-                </div >
-            )
-}
-        </div >
+                    <div className="flex items-center gap-8 text-white/40 text-xs font-mono uppercase tracking-widest">
+                        <a href="#" className="hover:text-white transition-colors">API Docs</a>
+                        <a href="#" className="hover:text-white transition-colors">Network Status</a>
+                        <a href="#" className="hover:text-white transition-colors">Security</a>
+                    </div>
+
+                    <div className="text-white/20 text-[10px] font-mono">
+                        © 2026 DOMAINGUARD. ALL RIGHTS RESERVED.
+                    </div>
+                </div>
+            </footer>
+        </div>
     );
 }
