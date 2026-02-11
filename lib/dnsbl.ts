@@ -55,6 +55,9 @@ async function performLookup(lookupHost: string, listHost: string): Promise<{ is
     }
 
     try {
+        // Add random jitter (0-500ms) to spread the load during bulk checks
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 500));
+
         const resultIps = await resolve4(lookupHost);
 
         // --- PRO-GRADE RETURN CODE HANDLING ---

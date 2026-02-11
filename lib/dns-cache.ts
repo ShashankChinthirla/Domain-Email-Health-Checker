@@ -11,8 +11,33 @@ interface CacheEntry<T> {
 const cache = new Map<string, CacheEntry<any>>();
 const TTL = 10 * 60 * 1000; // 10 Minutes
 
+// Global DNS Concurrency Control
+// This prevents overwhelming the OS/Resolver with thousands of parallel packets
+const MAX_CONCURRENT_QUERIES = 64;
+let runningQueries = 0;
+const queryQueue: ((value: void | PromiseLike<void>) => void)[] = [];
+
+async function acquireSlot(): Promise<void> {
+    if (runningQueries < MAX_CONCURRENT_QUERIES) {
+        runningQueries++;
+        return;
+    }
+    return new Promise(resolve => queryQueue.push(resolve));
+}
+
+function releaseSlot(): void {
+    runningQueries--;
+    if (queryQueue.length > 0) {
+        const next = queryQueue.shift();
+        if (next) {
+            runningQueries++;
+            next();
+        }
+    }
+}
+
 // Generic wrapper to cache DNS calls
-function cachedResolve<T>(
+async function cachedResolve<T>(
     key: string,
     resolveFn: () => Promise<T>
 ): Promise<T> {
@@ -32,7 +57,14 @@ function cachedResolve<T>(
         setTimeout(() => reject(new Error('DNS Timeout')), 10000)
     );
 
-    const promise = Promise.race([resolveFn(), timeoutPromise])
+    const promise = (async () => {
+        await acquireSlot();
+        try {
+            return await Promise.race([resolveFn(), timeoutPromise]);
+        } finally {
+            releaseSlot();
+        }
+    })()
         .then(data => {
             // Update cache with data on success
             cache.set(headersKey, { promise, timestamp: Date.now(), data });
