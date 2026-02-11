@@ -39,23 +39,17 @@ function isPrivateIP(ip: string): boolean {
     return false;
 }
 
-// Helper: Robust DNS TXT Lookup with Retry
-async function resolveTxtWithRetry(domain: string, retries = 1): Promise<string[][]> {
-    for (let i = 0; i <= retries; i++) {
-        try {
-            return await dns.resolveTxt(domain);
-        } catch (error: any) {
-            // ENOTFOUND/ENODATA -> Missing (Return empty to simulate no records found)
-            if (error.code === 'ENOTFOUND' || error.code === 'ENODATA') {
-                return [];
-            }
-            // TIMEOUT/SERVFAIL/Other -> Retry
-            // If last retry, throw to be caught as DNS_ERROR
-            if (i === retries) throw error;
-            await new Promise(res => setTimeout(res, 200 * (Math.pow(2, i)))); // Exponential Backoff
+// Helper: Robust DNS TXT Lookup (Retries handled by dns-cache)
+async function resolveTxtWithRetry(domain: string): Promise<string[][]> {
+    try {
+        return await dns.resolveTxt(domain);
+    } catch (error: any) {
+        // ENOTFOUND/ENODATA -> Missing
+        if (error.code === 'ENOTFOUND' || error.code === 'ENODATA' || error.message?.includes('ENOTFOUND')) {
+            return [];
         }
+        throw error;
     }
-    return [];
 }
 
 // --- 1. DNS Tests (Expanded - Deep Analysis) ---

@@ -37,12 +37,12 @@ function releaseSlot(): void {
 }
 
 /**
- * Generic wrapper to cache DNS calls with global concurrency and retry logic
+ * Generic wrapper to cache DNS calls with global concurrency
  */
 async function cachedResolve<T>(
     key: string,
     resolveFn: () => Promise<T>,
-    retryCount = 1
+    retryCount = 0 // Default to NO retry for bulk speed
 ): Promise<T> {
     const now = Date.now();
     const headersKey = `DNS:${key}`;
@@ -60,23 +60,20 @@ async function cachedResolve<T>(
         for (let attempt = 0; attempt <= retryCount; attempt++) {
             await acquireSlot();
 
-            // TIMEOUT WRAPPER: 4000ms (Optimized for Vercel environment)
+            // TIMEOUT WRAPPER: 2500ms (Strictly optimized for Vercel 10s limit)
             const timeoutPromise = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('DNS Timeout')), 4000)
+                setTimeout(() => reject(new Error('DNS Timeout')), 2500)
             );
 
             try {
                 return await Promise.race([resolveFn(), timeoutPromise]);
             } catch (err: any) {
                 lastError = err;
-                // Only retry on timeouts or common temporary DNS errors
                 const shouldRetry = attempt < retryCount &&
                     (err.message === 'DNS Timeout' || err.code === 'ETIMEOUT' || err.code === 'ESERVFAIL');
 
                 if (!shouldRetry) throw err;
-
-                // Wait briefly before retry
-                await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+                await new Promise(resolve => setTimeout(resolve, 300));
             } finally {
                 releaseSlot();
             }
