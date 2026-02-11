@@ -241,7 +241,7 @@ export function DomainChecker() {
                 const domains = data.map((row) => row['Domain'] || row['domain']).filter(Boolean);
                 setBulkProgress({ current: 0, total: domains.length });
 
-                const CONCURRENCY_LIMIT = 15; // Reduced to prevent DNS resolver exhaustion
+                const CONCURRENCY_LIMIT = 10; // Lowest limit for maximum stability on Vercel Hobby
                 let activeCount = 0;
                 let currentIndex = 0;
                 const total = domains.length;

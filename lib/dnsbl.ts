@@ -78,13 +78,16 @@ async function performLookup(lookupHost: string, listHost: string): Promise<{ is
         }
 
         // 3. DNS Wildcard Protection
-        // REAL DNSBL results MUST be in the 127.0.0.x range.
-        // If it returns anything else (like the domain's own Cloudflare IPs), it's a wildcard "leak" and NOT a listing.
-        const validListingIps = resultIps.filter(ip => ip.startsWith('127.0.0.'));
+        // REAL DNSBL results MUST be in the loopback range (127.x.x.x).
+        // If it returns anything else (like the domain's own Cloudflare IPs), it's a wildcard "leak".
+        const validListingIps = resultIps.filter(ip => ip.startsWith('127.'));
         const isListed = validListingIps.length > 0;
 
-        if (resultIps.length > 0 && !isListed) {
-            // It returned IPs, but they weren't in the 127.0.0.x range.
+        // CRITICAL: If the result contains ANY non-loopback IP, it's definitely a wildcard leak (Cloudflare/WAF).
+        // We reject the entire result as "Clean" in this case.
+        const hasWildcardLeak = resultIps.some(ip => !ip.startsWith('127.'));
+
+        if (hasWildcardLeak) {
             return { isListed: false, status: 'PASS' };
         }
 

@@ -12,8 +12,8 @@ const cache = new Map<string, CacheEntry<any>>();
 const TTL = 10 * 60 * 1000; // 10 Minutes
 
 // Global DNS Concurrency Control
-// This prevents overwhelming the OS/Resolver with thousands of parallel packets
-const MAX_CONCURRENT_QUERIES = 64;
+// Increased to 128 to handle bulk bursts better while still avoiding OS exhaustion
+const MAX_CONCURRENT_QUERIES = 128;
 let runningQueries = 0;
 const queryQueue: ((value: void | PromiseLike<void>) => void)[] = [];
 
@@ -52,9 +52,9 @@ async function cachedResolve<T>(
     }
 
     // New Request
-    // TIMEOUT WRAPPER: Force fail after 10000ms to prevent long hangs on bad domains
+    // TIMEOUT WRAPPER: Force fail after 2500ms for Vercel compatibility
     const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('DNS Timeout')), 10000)
+        setTimeout(() => reject(new Error('DNS Timeout')), 2500)
     );
 
     const promise = (async () => {
