@@ -12,8 +12,8 @@ const cache = new Map<string, CacheEntry<any>>();
 const TTL = 10 * 60 * 1000; // 10 Minutes
 
 // Global DNS Concurrency Control
-// Lowered to 32 for Vercel stability (better to be safe than throttled)
-const MAX_CONCURRENT_QUERIES = 32;
+// Increased to 128 to prevent queuing delays that cause timeouts on Vercel
+const MAX_CONCURRENT_QUERIES = 128;
 let runningQueries = 0;
 const queryQueue: ((value: void | PromiseLike<void>) => void)[] = [];
 
@@ -60,9 +60,9 @@ async function cachedResolve<T>(
         for (let attempt = 0; attempt <= retryCount; attempt++) {
             await acquireSlot();
 
-            // TIMEOUT WRAPPER: 5000ms (Relaxed for Vercel environment)
+            // TIMEOUT WRAPPER: 4000ms (Optimized for Vercel environment)
             const timeoutPromise = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('DNS Timeout')), 5000)
+                setTimeout(() => reject(new Error('DNS Timeout')), 4000)
             );
 
             try {

@@ -618,8 +618,8 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
 async function runDKIMTests(domain: string): Promise<TestResult[]> {
     const tests: TestResult[] = [];
 
-    // Common selectors to check (Brute force compatible)
-    const selectors = ['google', 'default', 'k1', 's1', 'mail', 'selector1', 'mandrill', 'smtp', 'pic', 'dkim', 'uk'];
+    // Common selectors to check (Top 6 for Vercel speed)
+    const selectors = ['google', 'default', 'k1', 's1', 'mail', 'selector1'];
 
     // Parallel lookup for speed
     const lookups = await Promise.allSettled(
