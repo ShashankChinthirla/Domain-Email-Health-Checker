@@ -163,6 +163,23 @@ export function DomainChecker() {
     const bufferedResults = useRef<FullHealthReport[]>([]);
     const bufferedProgressCount = useRef(0);
 
+    // Completion UX: Sound + Auto-Dismiss
+    useEffect(() => {
+        if (bulkStatus === 'completed') {
+            const chime = new Audio('/completion.mp3');
+            try {
+                chime.volume = 0.5;
+                chime.play().catch(e => console.warn('Audio play blocked', e));
+            } catch (e) {
+                console.warn('Audio error', e);
+            }
+            const timer = setTimeout(() => {
+                setBulkStatus('idle');
+            }, 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [bulkStatus]);
+
     const handlePauseBulk = () => {
         setBulkStatus('paused');
         bulkControlRef.current.isPaused = true;
