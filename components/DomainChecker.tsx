@@ -641,8 +641,8 @@ export function DomainChecker() {
                         <div className="flex items-center gap-2 text-white/80 font-bold tracking-tight text-xl">
                             <ShieldCheck className="w-6 h-6 text-emerald-500" />
                             <span>DOMAINGUARD <span className="text-white/40 font-medium">PRO</span></span>
-                            <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.4-stable • Native DNS Engine</p>
                         </div>
+                        <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.4-stable • Native DNS Engine</p>
                     </div>
 
                     <div className="flex items-center gap-8 text-white/40 text-xs font-mono uppercase tracking-widest">
