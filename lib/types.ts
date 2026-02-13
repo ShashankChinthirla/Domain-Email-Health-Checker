@@ -40,4 +40,5 @@ export interface FullHealthReport {
         smtp: CategoryResult;
         webServer: CategoryResult;
     };
+    dbEmail?: string | null;
 }

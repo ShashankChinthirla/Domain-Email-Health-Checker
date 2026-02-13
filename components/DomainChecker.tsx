@@ -78,7 +78,11 @@ export function DomainChecker() {
             const response = await fetch('/api/check-domain', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ domain: cleanDomain }),
+                body: JSON.stringify({
+                    domain: cleanDomain,
+                    userId: auth.currentUser?.uid,
+                    userEmail: auth.currentUser?.email
+                }),
                 signal // Pass abort signal
             });
             const data = await response.json();
@@ -572,7 +576,7 @@ export function DomainChecker() {
 
             {/* --- BULK RESULTS STATE --- */}
             {!currentSingleResult && bulkResults.length > 0 && (
-                <BulkResultsTable results={bulkResults} onSelect={handleSelectDomain} />
+                <BulkResultsTable results={bulkResults} onSelect={handleSelectDomain} user={user} />
             )}
 
             {/* --- RESULTS STATE --- */}

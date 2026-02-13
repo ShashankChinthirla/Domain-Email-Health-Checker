@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { runFullHealthCheck } from '@/lib/test-engine';
+import clientPromise from '@/lib/mongodb';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const { domain } = body;
+        const { domain, userId, userEmail } = body;
 
         if (!domain || typeof domain !== 'string' || !domain.includes('.')) {
             return NextResponse.json({ error: 'Invalid domain format' }, { status: 400 });
@@ -27,7 +28,36 @@ export async function POST(request: Request) {
             )
         ]);
 
-        return NextResponse.json(healthReport);
+        // --- MONGODB INTEGRATION ---
+        let dbEmail = null;
+        try {
+            const client = await clientPromise;
+            const db = client.db("Test");
+            const collection = db.collection("dfyinfrasetups");
+
+            // 1. Find the existing document for this domain to get the user email (from schema)
+            // CASE-INSENSITIVE SEARCH: Use regex to match regardless of capitalization
+            const existingDoc = await collection.findOne({
+                domain: { $regex: new RegExp(`^${cleanDomain}$`, "i") }
+            });
+            if (existingDoc) {
+                // Prioritize top-level 'user' field as per instructions and sample data
+                if ((existingDoc as any).user && (existingDoc as any).user.includes('@')) {
+                    dbEmail = (existingDoc as any).user;
+                }
+                // Fallback to first contact email if 'user' isn't available
+                else if ((existingDoc as any).contactDetails && (existingDoc as any).contactDetails.length > 0) {
+                    dbEmail = (existingDoc as any).contactDetails[0].email;
+                }
+            }
+        } catch (mongoError) {
+            console.error('MongoDB Error:', mongoError);
+        }
+
+        return NextResponse.json({
+            ...healthReport,
+            dbEmail: dbEmail
+        });
 
     } catch (error: any) {
         if (error.message === 'Global Timeout' || error.name === 'AbortError') {

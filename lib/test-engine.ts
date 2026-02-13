@@ -703,7 +703,7 @@ async function runDKIMTests(domain: string): Promise<TestResult[]> {
 }
 
 
-// --- 5. Blacklist (Safe IP Check) ---
+
 // --- 5. Blacklist (Safe IP Check) ---
 async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Promise<TestResult[]> {
     if (mxRecords.length === 0) return [{ name: 'Blacklist Check', status: 'Warning', info: 'No MX Records to check', reason: 'We cannot check blacklists without an MX record.', recommendation: 'Fix your MX records first.' }];

@@ -4,12 +4,15 @@ import { CheckCircle2, XCircle, AlertTriangle, ArrowRight, ShieldCheck, Download
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
+import { User } from 'firebase/auth';
+
 interface BulkResultsTableProps {
     results: FullHealthReport[];
     onSelect: (result: FullHealthReport) => void;
+    user?: User | null;
 }
 
-export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
+export function BulkResultsTable({ results, onSelect, user }: BulkResultsTableProps) {
     const [filter, setFilter] = React.useState<'all' | 'clean' | 'issues'>('all');
 
     if (results.length === 0) return null;
@@ -45,6 +48,7 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
             if (filter === 'clean') {
                 return {
                     "Domain": r.domain,
+                    "User": r.dbEmail || user?.email || "Anonymous",
                     "SPF": r.rawSpf || "Missing",
                     "DMARC": r.rawDmarc || "Missing",
                     "Score": r.score
@@ -67,6 +71,7 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
 
             const row: any = {
                 "Domain": r.domain,
+                "User": r.dbEmail || user?.email || "Anonymous",
                 "Score": r.score,
                 "Health Status": (errors === 0 && warnings === 0) ? '100% Secure' : `${errors} Errors, ${warnings} Warnings`,
                 "SPF [Full]": r.rawSpf || "Missing",
@@ -106,6 +111,7 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
         if (filter === 'clean') {
             wscols = [
                 { wch: 25 }, // Domain
+                { wch: 30 }, // User
                 { wch: 40 }, // SPF
                 { wch: 40 }, // DMARC
                 { wch: 10 }, // Score
@@ -113,6 +119,7 @@ export function BulkResultsTable({ results, onSelect }: BulkResultsTableProps) {
         } else {
             wscols = [
                 { wch: 25 }, // Domain
+                { wch: 30 }, // User
                 { wch: 10 }, // Score
                 { wch: 25 }, // Health
                 { wch: 40 }, // SPF
