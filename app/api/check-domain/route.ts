@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const { domain, userId, userEmail } = body;
+        const { domain } = body;
 
         if (!domain || typeof domain !== 'string' || !domain.includes('.')) {
             return NextResponse.json({ error: 'Invalid domain format' }, { status: 400 });
@@ -20,7 +20,8 @@ export async function POST(request: Request) {
 
         const cleanDomain = domain.trim().toLowerCase();
 
-        // Race the health check against the global timer
+        // 1. RUN ORIGINAL TEST LOGIC (Exactly as it was)
+        // This ensures HTTP and internal timeouts are handled by the engine normally
         const healthReport = await Promise.race([
             runFullHealthCheck(cleanDomain),
             new Promise<never>((_, reject) =>
@@ -28,30 +29,25 @@ export async function POST(request: Request) {
             )
         ]);
 
-        // --- MONGODB INTEGRATION ---
+        // 2. FETCH MONGODB EMAIL (Simple, separate step)
         let dbEmail = null;
         try {
             const client = await clientPromise;
-            const db = client.db("Test");
+            // Database: "vercel", Collection: "dfyinfrasetups" (from your screenshot)
+            const db = client.db("vercel");
             const collection = db.collection("dfyinfrasetups");
 
-            // 1. Find the existing document for this domain to get the user email (from schema)
-            // CASE-INSENSITIVE SEARCH: Use regex to match regardless of capitalization
-            const existingDoc = await collection.findOne({
+            // Search for the domain (case-insensitive)
+            const doc = await collection.findOne({
                 domain: { $regex: new RegExp(`^${cleanDomain}$`, "i") }
             });
-            if (existingDoc) {
-                // Prioritize top-level 'user' field as per instructions and sample data
-                if ((existingDoc as any).user && (existingDoc as any).user.includes('@')) {
-                    dbEmail = (existingDoc as any).user;
-                }
-                // Fallback to first contact email if 'user' isn't available
-                else if ((existingDoc as any).contactDetails && (existingDoc as any).contactDetails.length > 0) {
-                    dbEmail = (existingDoc as any).contactDetails[0].email;
-                }
+
+            if (doc) {
+                // Priority: 'user' field, then first contact email
+                dbEmail = (doc as any).user || (doc as any).contactDetails?.[0]?.email || null;
             }
         } catch (mongoError) {
-            console.error('MongoDB Error:', mongoError);
+            console.error("MongoDB fetch failed (optional):", mongoError);
         }
 
         return NextResponse.json({
@@ -63,9 +59,9 @@ export async function POST(request: Request) {
         if (error.message === 'Global Timeout' || error.name === 'AbortError') {
             return NextResponse.json({
                 error: 'Timeout',
-                message: 'The health check exceeded Vercel execution limits. Please try a single check or a shorter list.',
+                message: 'The health check exceeded execution limits. Please try again.',
                 status: 'partial'
-            }, { status: 200 }); // Return 200 so UI can handle partial/failed state gracefully
+            }, { status: 200 });
         }
         console.error('API Error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
