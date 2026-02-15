@@ -71,7 +71,7 @@ export function BulkResultsTable({ results, onSelect, user }: BulkResultsTablePr
 
             const row: any = {
                 "Domain": r.domain,
-                "User": r.dbEmail || user?.email || "Anonymous",
+                "User": r.dbEmail || "No User found",
                 "Score": r.score,
                 "Health Status": (errors === 0 && warnings === 0) ? '100% Secure' : `${errors} Errors, ${warnings} Warnings`,
                 "SPF [Full]": r.rawSpf || "Missing",

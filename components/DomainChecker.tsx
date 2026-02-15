@@ -622,6 +622,9 @@ export function DomainChecker() {
                             <VerdictBanner report={currentSingleResult} />
                         </div>
 
+                        {/* 2.5 WARNINGS & RECOMMENDATIONS (NEW LOCATION) */}
+                        <ProblemsSection problems={currentSingleResult.categories.problems} />
+
                         {/* 3. COLLAPSED DETAILS */}
                         <div className="pt-8 border-t border-white/10 mt-12 mb-24">
                             <button
@@ -639,7 +642,6 @@ export function DomainChecker() {
                                 showAdvanced && (
                                     <div className="space-y-12 pt-8 animate-in fade-in slide-in-from-top-4 duration-300">
 
-                                        <ProblemsSection problems={currentSingleResult.categories.problems} />
                                         <HealthSummary
                                             categories={[
                                                 currentSingleResult.categories.dmarc,
