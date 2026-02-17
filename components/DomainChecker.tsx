@@ -360,10 +360,33 @@ export function DomainChecker() {
     // Helper generators
     const generateUpdatedSpf = (raw: string | null) => raw ? raw.replace(/-all|\?all/g, '~all') : 'v=spf1 a mx ~all';
     const generateUpdatedDmarc = (raw: string | null, domain: string) => {
+        const ensureMailto = (val: string) => {
+            return val.split(',').map(part => {
+                const p = part.trim();
+                if (!p) return p;
+                return p.toLowerCase().startsWith('mailto:') ? p : `mailto:${p}`;
+            }).join(', ');
+        };
+
+        const hasSyntaxError = (record: string) => {
+            const mRua = record.match(/rua=([^;]+)/i);
+            if (mRua) {
+                const parts = mRua[1].split(',').map(p => p.trim());
+                if (parts.some(p => p && !p.toLowerCase().startsWith('mailto:'))) return true;
+            }
+            const mRuf = record.match(/ruf=([^;]+)/i);
+            if (mRuf) {
+                const parts = mRuf[1].split(',').map(p => p.trim());
+                if (parts.some(p => p && !p.toLowerCase().startsWith('mailto:'))) return true;
+            }
+            return false;
+        };
+
         // If current record is already strong, don't recommend a "fix" that is identical
         const isAlreadyStrict = raw?.includes('p=reject') || (raw?.includes('p=quarantine') && raw?.includes('pct=100'));
+        const syntaxError = raw ? hasSyntaxError(raw) : false;
 
-        if (isAlreadyStrict && !raw?.includes('p=none')) {
+        if (isAlreadyStrict && !raw?.includes('p=none') && !syntaxError) {
             return raw || '';
         }
 
@@ -371,10 +394,10 @@ export function DomainChecker() {
         let ruf = '';
         if (raw) {
             const mRua = raw.match(/rua=([^;]+)/i);
-            if (mRua) rua = mRua[1].trim();
+            if (mRua) rua = ensureMailto(mRua[1].trim());
 
             const mRuf = raw.match(/ruf=([^;]+)/i);
-            if (mRuf) ruf = ` ruf=${mRuf[1].trim()};`;
+            if (mRuf) ruf = ` ruf=${ensureMailto(mRuf[1].trim())};`;
         }
         return `v=DMARC1; p=reject; sp=reject; pct=100; rua=${rua};${ruf} adkim=r; aspf=r;`;
     };

@@ -553,10 +553,25 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
         let hasRua = false;
         if (tags['rua']) {
             hasRua = true;
-            tests.push({ name: 'DMARC RUA Reports', status: 'Pass', info: 'Enabled', reason: 'Aggregate reports configured.', recommendation: 'No action needed.' });
+            const ruaParts = tags['rua'].split(',').map(p => p.trim());
+            const invalidRua = ruaParts.filter(p => !p.toLowerCase().startsWith('mailto:'));
+
+            if (invalidRua.length > 0) {
+                tests.push({
+                    name: 'DMARC RUA Syntax',
+                    status: 'Error',
+                    info: 'Invalid Format',
+                    reason: `DMARC rua URIs must start with "mailto:". Found: ${invalidRua.join(', ')}`,
+                    recommendation: 'Add "mailto:" prefix to all rua email addresses (e.g., rua=mailto:admin@example.com).',
+                    host: domain,
+                    result: 'DMARC Syntax Error'
+                });
+            } else {
+                tests.push({ name: 'DMARC RUA Reports', status: 'Pass', info: 'Enabled', reason: 'Aggregate reports configured correctly.', recommendation: 'No action needed.' });
+            }
 
             // External Authorization Check
-            const emails = tags['rua'].split(',').map(e => e.replace('mailto:', '').trim());
+            const emails = ruaParts.map(e => e.replace(/^mailto:/i, '').trim());
             for (const email of emails.slice(0, 3)) { // Check first 3
                 if (email.includes('@')) {
                     const targetDomain = email.split('@')[1];
@@ -579,7 +594,22 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
 
         // 7. RUF (Forensic Reports)
         if (tags['ruf']) {
-            tests.push({ name: 'DMARC RUF Reports', status: 'Pass', info: 'Enabled', reason: 'Forensic reports configured (may not be supported by all providers).', recommendation: 'No action needed.' });
+            const rufParts = tags['ruf'].split(',').map(p => p.trim());
+            const invalidRuf = rufParts.filter(p => !p.toLowerCase().startsWith('mailto:'));
+
+            if (invalidRuf.length > 0) {
+                tests.push({
+                    name: 'DMARC RUF Syntax',
+                    status: 'Error',
+                    info: 'Invalid Format',
+                    reason: `DMARC ruf URIs must start with "mailto:". Found: ${invalidRuf.join(', ')}`,
+                    recommendation: 'Add "mailto:" prefix to all ruf email addresses.',
+                    host: domain,
+                    result: 'DMARC Syntax Error'
+                });
+            } else {
+                tests.push({ name: 'DMARC RUF Reports', status: 'Pass', info: 'Enabled', reason: 'Forensic reports configured (may not be supported by all providers).', recommendation: 'No action needed.' });
+            }
         } else {
             tests.push({ name: 'DMARC RUF Reports', status: 'Pass', info: 'Not Enabled', reason: 'Forensic reports are optional and often noisy.', recommendation: 'No action needed.' });
         }
