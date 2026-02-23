@@ -16,6 +16,7 @@ interface NavbarProps {
         loading: boolean;
     };
 }
+const ADMIN_EMAILS = ['shashankshashankc39@gmail.com', 'paybalc06@gmail.com'];
 
 export function Navbar({ searchState }: NavbarProps) {
     const [user, setUser] = useState<User | null>(null);
@@ -75,7 +76,22 @@ export function Navbar({ searchState }: NavbarProps) {
                         </div>
                     )}
 
+                    {/* Admin Only: Activity Dashboard Link */}
+                    {user && user.email && ADMIN_EMAILS.includes(user.email) && (
+                        <a
+                            href="/activity"
+                            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 text-white/50 hover:text-emerald-400 transition-all text-xs font-semibold tracking-widest uppercase"
+                        >
+                            <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                            </span>
+                            Activity
+                        </a>
+                    )}
+
                     {/* Auth Section */}
+
                     <div className="flex items-center gap-4 border-l border-white/10 pl-6 h-8">
                         {user ? (
                             <div className="relative" ref={dropdownRef}>
