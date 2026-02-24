@@ -27,12 +27,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
         run: |
-          # The Sync API endpoint acts as a webhook. We can CURL the production sync URL, 
-          # but to be safe and standalone we can just run a quick script or curl the live project.
-          # Assuming the domain checker URL is set as a secret. If not, the script below will scan
-          # all domains already in the DB with "Needs_Scan". For automated syncing before the scan, 
-          # you can optionally curl your live Vercel app here before the scan step.
-          echo "Syncing is handled manually or via external webhook. Proceeding to scan existing 'Needs_Scan' targets..."
+          # We run the dedicated CLI sync script directly to safely bypass needing a live production URL
+          npx tsx scripts/sync_cloudflare.ts
 
       - name: Run Background Scanner For New Domains ONLY
         env:
