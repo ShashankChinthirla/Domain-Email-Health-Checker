@@ -441,7 +441,7 @@ export default function AdminPage() {
                           </div>
                         </td>
                         <td className="p-4 text-center">
-                          <button className="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors" onClick={(e) => { e.stopPropagation(); }}>
+                          <button className="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors cursor-pointer" onClick={(e) => { e.stopPropagation(); }}>
                             <MoreVertical className="w-5 h-5" />
                           </button>
                         </td>
