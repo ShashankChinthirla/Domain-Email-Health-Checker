@@ -61,7 +61,7 @@ export function RawRecord({ record, type, isInvalid, isRecommended, title, showC
             {showCopyButton && isPresent && (
                 <button
                     onClick={handleCopy}
-                    className="absolute top-4 right-4 p-2 rounded-md hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                    className="absolute top-4 right-4 p-2 rounded-md hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
                     title="Copy record"
                 >
                     {copied ? (

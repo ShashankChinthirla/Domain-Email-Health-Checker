@@ -67,7 +67,7 @@ export function Hero({
             <div className="w-full max-w-lg z-10 flex flex-col items-center">
 
                 {/* Visual Container */}
-                <div className="relative flex items-center w-full bg-black/20 backdrop-blur-2xl border border-white/10 shadow-2xl shadow-black/20 rounded-full p-1.5 transition-all duration-300 focus-within:bg-black/40 focus-within:border-white/20 focus-within:scale-[1.01]">
+                <div className="relative flex items-center w-full bg-[#18181b]/90 backdrop-blur-2xl border border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.04)] rounded-full p-1.5 transition-all duration-300 focus-within:bg-[#1f1f23] focus-within:border-white/40 focus-within:shadow-[0_0_40px_rgba(255,255,255,0.08)] focus-within:scale-[1.01]">
 
                     {/* Icon */}
                     <div className="pl-4 pr-3 text-white/40">
@@ -122,7 +122,7 @@ export function Hero({
                 <div className="mt-8 flex justify-center transition-opacity duration-500">
                     <button
                         onClick={() => executeAction(() => fileInputRef.current?.click())}
-                        className="text-xs font-medium text-white/40 hover:text-white/80 flex items-center gap-2 transition-colors uppercase tracking-widest"
+                        className="text-xs font-medium text-white/40 hover:text-white/80 flex items-center gap-2 transition-colors uppercase tracking-widest cursor-pointer"
                     >
                         <Upload className="w-3 h-3" /> or upload list
                     </button>

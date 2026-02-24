@@ -18,6 +18,7 @@ import { Hero } from './Hero';
 import { LoginModal } from '@/components/LoginModal';
 import { Download, Upload, Search, ShieldCheck, Loader2, ArrowRight, ChevronDown, ChevronUp, CheckCircle2, CircleDashed } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSearchParams } from 'next/navigation';
 
 // Defined outside to be stable
 const SCAN_STEPS = [
@@ -68,6 +69,61 @@ export function DomainChecker() {
         });
         return () => unsubscribe();
     }, []);
+
+    const searchParams = useSearchParams();
+    const autoDomain = searchParams.get('domain');
+
+    useEffect(() => {
+        if (autoDomain && !loading && !currentSingleResult) {
+            setDomainInput(autoDomain);
+            // Trigger auto check
+            // We use a small timeout to let the UI mount fully before triggering
+            const timer = setTimeout(() => {
+                const fakeEvent = { preventDefault: () => { } } as any;
+                handleAutoCheck(autoDomain);
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [autoDomain]);
+
+    const handleAutoCheck = async (domainToSearch: string) => {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        setLoading(true);
+        setInputError(null);
+        setCurrentSingleResult(null);
+        setBulkResults([]); // Clear bulk
+        setShowAdvanced(false);
+        setScanIndex(0);
+
+        const stepDuration = 600;
+        const progressInterval = setInterval(() => {
+            setScanIndex(prev => (prev < SCAN_STEPS.length - 1 ? prev + 1 : prev));
+        }, stepDuration);
+
+        try {
+            const result = await fetchDomainHealth(domainToSearch);
+            clearInterval(progressInterval);
+            setScanIndex(SCAN_STEPS.length - 1);
+
+            setTimeout(() => {
+                if (result) {
+                    setResults((prev) => [...prev, result]);
+                    setCurrentSingleResult(result);
+                    setLoading(false);
+
+                    if (auth.currentUser) {
+                        saveScanResult(auth.currentUser.uid, result.domain, result.score);
+                    }
+                } else {
+                    setInputError('Could not retrieve data for this domain.');
+                    setLoading(false);
+                }
+            }, 600);
+        } catch (e) {
+            clearInterval(progressInterval);
+            setLoading(false);
+        }
+    };
 
 
     const fetchDomainHealth = async (domain: string, signal?: AbortSignal) => {
@@ -606,21 +662,26 @@ export function DomainChecker() {
             {currentSingleResult && (
                 <div className="pt-20 pb-24 min-h-screen">
 
-                    {/* Domain Result Header (LEFT ALIGNED) */}
-                    <div className="max-w-7xl mx-auto px-6 w-full flex flex-col items-start mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="flex flex-col gap-2 w-full">
+                    {/* Domain Result Header (LEFT ALIGNED TEXT, RIGHT ALIGNED BANNER) */}
+                    <div className="max-w-7xl mx-auto px-6 w-full flex flex-col md:flex-row items-start md:items-center justify-between gap-6 md:gap-10 mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="flex flex-col gap-2 w-full md:w-auto flex-1 min-w-0">
                             <div className="flex items-center gap-2 text-white/40 text-xs font-mono uppercase tracking-widest justify-start">
                                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
                                 Analysis Complete
                                 <span className="text-white/10">|</span>
                                 {new Date().toLocaleDateString()}
                             </div>
-                            <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
+                            <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight break-all md:break-words">
                                 {currentSingleResult.domain}
                             </h1>
-                            <p className="text-white/50 text-lg">
+                            <p className="text-white/50 text-base md:text-lg">
                                 Comprehensive security diagnostic report.
                             </p>
+                        </div>
+
+                        {/* Right Side: Verdict Banner Box */}
+                        <div className="w-full md:w-[400px] shrink-0">
+                            <VerdictBanner report={currentSingleResult} />
                         </div>
                     </div>
 
@@ -641,9 +702,7 @@ export function DomainChecker() {
                         />
 
                         {/* 2. VERDICT BANNER (Secondary - Pushed down to require scroll) */}
-                        <div className="mt-32">
-                            <VerdictBanner report={currentSingleResult} />
-                        </div>
+                        {/* VERDICT BANNER MOVED TO HEADER */}
 
                         {/* 2.5 WARNINGS & RECOMMENDATIONS (NEW LOCATION) */}
                         <ProblemsSection problems={currentSingleResult.categories.problems} />
@@ -696,28 +755,6 @@ export function DomainChecker() {
                 </div>
             )}
 
-            {/* --- FOOTER --- */}
-            <footer className="relative z-10 border-t border-white/5 bg-black/50 backdrop-blur-xl mt-auto">
-                <div className="max-w-7xl mx-auto px-6 py-12 flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="flex flex-col items-center md:items-start gap-2">
-                        <div className="flex items-center gap-2 text-white/80 font-bold tracking-tight text-xl">
-                            <ShieldCheck className="w-6 h-6 text-emerald-500" />
-                            <span>DOMAINGUARD <span className="text-white/40 font-medium">PRO</span></span>
-                        </div>
-                        <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em]">v1.2.8-stable • Smart Verification Core</p>
-                    </div>
-
-                    <div className="flex items-center gap-8 text-white/40 text-xs font-mono uppercase tracking-widest">
-                        <a href="#" className="hover:text-white transition-colors">API Docs</a>
-                        <a href="#" className="hover:text-white transition-colors">Network Status</a>
-                        <a href="#" className="hover:text-white transition-colors">Security</a>
-                    </div>
-
-                    <div className="text-white/20 text-[10px] font-mono">
-                        © 2026 DOMAINGUARD. ALL RIGHTS RESERVED.
-                    </div>
-                </div>
-            </footer>
         </div>
     );
 }

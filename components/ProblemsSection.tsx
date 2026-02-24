@@ -47,85 +47,78 @@ function ProblemList({ title, items, type }: ProblemListProps) {
         textHeader: "text-rose-400",
         icon: XCircle,
         badge: "bg-rose-500/10 text-rose-400 border-rose-500/20",
-        recBox: "bg-rose-950/10 border-rose-500/10",
+        recBox: "text-rose-300",
         arrow: "text-rose-400",
         divider: "border-rose-500/10"
     } : {
         textHeader: "text-amber-400",
         icon: AlertTriangle,
         badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-        recBox: "bg-amber-950/10 border-amber-500/10",
+        recBox: "text-amber-300",
         arrow: "text-amber-400",
         divider: "border-amber-500/10"
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-3">
             {/* Header */}
-            <div className="flex items-center gap-3 px-2">
-                <theme.icon className={cn("w-5 h-5", theme.textHeader)} />
+            <div className="flex items-center gap-2.5 px-1 py-1">
+                <theme.icon className={cn("w-4 h-4", theme.textHeader)} />
                 <div className="flex items-baseline gap-3">
-                    <h3 className={cn("font-bold text-xl tracking-tight", theme.textHeader)}>
+                    <h3 className={cn("font-bold text-base md:text-lg tracking-tight", theme.textHeader)}>
                         {title}
                     </h3>
-                    <span className="text-[9px] font-black opacity-40 bg-white/5 px-2 py-0.5 rounded-full border border-white/10 uppercase tracking-[0.2em]">
+                    <span className="text-[10px] font-bold opacity-60 bg-white/5 px-2 py-0.5 rounded-md border border-white/10 tracking-wider">
                         {items.length} ISSUES
                     </span>
                 </div>
             </div>
 
-            {/* SINGLE TABLE CONTAINER */}
-            <div className="bg-[#09090b] border border-white/5 rounded-3xl overflow-hidden divide-y divide-white/5">
+            {/* COMPACT LIST VIEW */}
+            <div className="bg-[#09090b]/80 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden divide-y divide-white/5 shadow-2xl">
                 {items.map((item, idx) => (
                     <div
                         key={idx}
-                        className="relative p-6 md:p-8 hover:bg-white/[0.01] transition-all duration-300"
+                        className="relative p-3 hover:bg-white/[0.02] transition-colors duration-200 group/row"
                     >
-                        <div className="relative flex flex-col lg:flex-row lg:items-center gap-8 lg:gap-12">
+                        {/* Grid Layout: Category/Name (Left) | Reason (Middle) | Recommendation (Right) */}
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 items-start md:items-center">
 
-                            {/* ISSUE INFO (LEFT COLUMN) */}
-                            <div className="flex-1 space-y-3">
-                                <div className="flex items-center gap-3 flex-wrap">
-                                    <span className={cn(
-                                        "text-[9px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-md border",
-                                        theme.badge
-                                    )}>
-                                        {item.category || 'SYSTEM'}
-                                    </span>
-                                    <h4 className="text-lg font-bold text-white tracking-tight leading-tight">
-                                        {item.name}
-                                    </h4>
-                                </div>
+                            {/* Column 1: Category & Name */}
+                            <div className="md:col-span-3 flex items-start gap-2.5 min-w-0">
+                                <span className={cn(
+                                    "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 mt-0.5",
+                                    theme.badge
+                                )}>
+                                    {item.category || 'SYS'}
+                                </span>
+                                <h4 className="text-[14px] font-semibold text-white tracking-tight leading-tight truncate">
+                                    {item.name}
+                                </h4>
+                            </div>
 
-                                <p className="text-white/40 text-sm leading-relaxed max-w-2xl">
+                            {/* Column 2: Reason Description */}
+                            <div className="md:col-span-5 flex flex-col min-w-0">
+                                <p className="text-white/60 text-[12px] leading-snug truncate md:whitespace-normal md:line-clamp-2">
                                     {item.reason}
                                 </p>
-
                                 {item.info && (
-                                    <div className="inline-flex items-center px-2 py-1 rounded bg-white/[0.02] border border-white/5">
-                                        <span className="text-[10px] font-mono text-white/20 uppercase tracking-tight">
+                                    <div className="mt-1">
+                                        <span className="text-[10px] font-mono text-white/40 bg-white/5 border border-white/5 px-1 rounded truncate max-w-full inline-block">
                                             {item.info}
                                         </span>
                                     </div>
                                 )}
                             </div>
 
-                            {/* RECOMMENDATION (RIGHT COLUMN / TABLE CELL) */}
-                            <div className="lg:w-[45%] shrink-0">
-                                <div className={cn(
-                                    "p-5 rounded-2xl border flex items-center gap-4 group/rec transition-all duration-300",
-                                    theme.recBox,
-                                    "border-white/5 hover:border-white/10"
-                                )}>
-                                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white/5 border border-white/5 shrink-0">
-                                        <ArrowRight className={cn("w-4 h-4 transition-transform group-hover/rec:translate-x-1", theme.arrow)} />
-                                    </div>
-                                    <div className="space-y-0.5 min-w-0">
-                                        <p className="text-[9px] font-black uppercase text-white/20 tracking-[0.3em]">Recommendation</p>
-                                        <p className={cn("text-sm font-bold leading-tight tracking-tight break-all md:break-words", theme.arrow)}>
-                                            {item.recommendation}
-                                        </p>
-                                    </div>
+                            {/* Column 3: Recommendation */}
+                            <div className="md:col-span-4 flex items-start gap-2 min-w-0">
+                                <ArrowRight className={cn("w-3.5 h-3.5 shrink-0 mt-0.5", theme.arrow)} />
+                                <div className="space-y-0.5 min-w-0">
+                                    <p className="text-[9px] font-bold uppercase text-white/30 tracking-wider">Fix</p>
+                                    <p className={cn("text-[12px] font-medium leading-snug break-words", theme.recBox)}>
+                                        {item.recommendation}
+                                    </p>
                                 </div>
                             </div>
 

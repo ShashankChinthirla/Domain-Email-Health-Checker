@@ -41,111 +41,116 @@ export function Navbar({ searchState }: NavbarProps) {
     return (
         <>
             <nav className={cn(
-                "fixed z-50 transition-all duration-300 flex items-center justify-between border-white/10 backdrop-blur-xl",
+                "fixed z-50 transition-all duration-300 border-white/10 backdrop-blur-xl flex justify-center",
                 searchState
-                    ? "top-0 left-0 w-full h-16 px-6 md:px-12 border-b bg-black/80"
-                    : "top-6 left-6 right-6 h-16 rounded-2xl px-6 border bg-black/80 shadow-2xl"
+                    ? "top-0 left-0 w-full h-16 border-b bg-black/80"
+                    : "top-6 left-6 right-6 md:left-1/2 md:-translate-x-1/2 md:w-[calc(100%-3rem)] md:max-w-7xl h-16 rounded-2xl border bg-black/80 shadow-2xl"
             )}>
-                <div className="flex items-center">
+                {/* INNER CONSTRAINED CONTAINER MATCHING THE REPORT MAX WIDTH */}
+                <div className="w-full max-w-7xl mx-auto px-6 h-full flex items-center justify-between gap-6">
+
                     {/* Logo */}
-                    <div className="text-sm font-medium tracking-widest text-white/90 uppercase opacity-80 shrink-0 select-none">
-                        DomainGuard <span className="text-white/30 ml-2">PRO</span>
-                    </div>
-                </div>
+                    <a href="/" className="text-sm font-medium tracking-widest text-white/90 uppercase opacity-80 hover:opacity-100 transition-opacity shrink-0 select-none cursor-pointer flex items-center">
+                        DOMAINGUARD <span className="text-white/30 ml-2">PRO</span>
+                    </a>
 
-                <div className="flex items-center gap-6">
-                    {/* Optional Navbar Search (Visible on Results Page) */}
-                    {searchState && (
-                        <div className="hidden md:flex items-center relative group w-80 animate-in fade-in slide-in-from-right-4 duration-500">
-                            <div className="absolute left-3 text-white/40 pointer-events-none">
-                                <Search className="w-3.5 h-3.5" />
-                            </div>
-                            <input
-                                type="text"
-                                value={searchState.value}
-                                onChange={(e) => searchState.onChange(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && searchState.onSubmit()}
-                                placeholder="Analyze another domain..."
-                                className="w-full h-9 pl-9 pr-4 bg-[#1c1c1e] border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/10 transition-all font-medium placeholder-white/20"
-                            />
-                            {searchState.loading && (
-                                <div className="absolute right-3">
-                                    <Loader2 className="w-3.5 h-3.5 text-white/50 animate-spin" />
+                    {/* Right Side (Search + Auth) */}
+                    <div className="flex flex-1 items-center justify-end gap-6 sm:gap-8">
+                        {/* Optional Navbar Search (Visible on Results Page) */}
+                        {searchState && (
+                            <div className="hidden md:flex items-center relative group w-80 animate-in fade-in slide-in-from-right-4 duration-500">
+                                <div className="absolute left-3 text-white/40 pointer-events-none">
+                                    <Search className="w-3.5 h-3.5" />
                                 </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Admin Only: Activity Dashboard Link */}
-                    {user && user.email && ADMIN_EMAILS.includes(user.email) && (
-                        <a
-                            href="/activity"
-                            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 text-white/50 hover:text-emerald-400 transition-all text-xs font-semibold tracking-widest uppercase"
-                        >
-                            <span className="relative flex h-1.5 w-1.5 shrink-0">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                            </span>
-                            Activity
-                        </a>
-                    )}
-
-                    {/* Auth Section */}
-
-                    <div className="flex items-center gap-4 border-l border-white/10 pl-6 h-8">
-                        {user ? (
-                            <div className="relative" ref={dropdownRef}>
-                                <button
-                                    onClick={() => setShowDropdown(!showDropdown)}
-                                    className="flex items-center gap-3 p-1.5 pr-3 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all duration-200 group"
-                                >
-                                    {/* Avatar */}
-                                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium text-xs shadow-lg">
-                                        {user.photoURL ? (
-                                            <img src={user.photoURL} alt="User" className="w-full h-full rounded-full object-cover" />
-                                        ) : (
-                                            (user.displayName?.[0] || user.email?.[0] || 'U').toUpperCase()
-                                        )}
-                                    </div>
-
-                                    {/* Name */}
-                                    <div className="hidden sm:block text-left">
-                                        <p className="text-xs font-semibold text-white/90 group-hover:text-white transition-colors">
-                                            {user.displayName || 'User'}
-                                        </p>
-                                    </div>
-
-                                    <ChevronDown size={14} className={cn("text-white/50 transition-transform duration-200", showDropdown && "rotate-180")} />
-                                </button>
-
-                                {/* Dropdown Menu */}
-                                {showDropdown && (
-                                    <div className="absolute right-0 top-full mt-2 w-56 bg-[#18181b] border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
-                                        <div className="p-4 border-b border-white/5">
-                                            <p className="text-sm font-medium text-white truncate">{user.displayName || 'DomainGuard User'}</p>
-                                            <p className="text-xs text-white/50 truncate mt-0.5">{user.email}</p>
-                                        </div>
-                                        <div className="p-1">
-                                            <button
-                                                onClick={handleLogout}
-                                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded-lg transition-colors"
-                                            >
-                                                <LogOut size={16} />
-                                                Sign Out
-                                            </button>
-                                        </div>
+                                <input
+                                    type="text"
+                                    value={searchState.value}
+                                    onChange={(e) => searchState.onChange(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && searchState.onSubmit()}
+                                    placeholder="Analyze another domain..."
+                                    className="w-full h-9 pl-9 pr-4 bg-[#1c1c1e] border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/10 transition-all font-medium placeholder-white/20"
+                                />
+                                {searchState.loading && (
+                                    <div className="absolute right-3">
+                                        <Loader2 className="w-3.5 h-3.5 text-white/50 animate-spin" />
                                     </div>
                                 )}
                             </div>
-                        ) : (
-                            <button
-                                onClick={() => setShowLogin(true)}
-                                className="flex items-center gap-2 px-5 py-2 rounded-full bg-white text-black text-sm font-bold tracking-tight hover:bg-zinc-200 active:scale-95 transition-all shadow-lg hover:shadow-white/20"
-                            >
-                                <LogIn size={14} strokeWidth={2.5} />
-                                <span>Sign In</span>
-                            </button>
                         )}
+
+
+
+                        {/* Auth Section */}
+                        <div className="flex items-center gap-4 h-8 shrink-0">
+                            {user ? (
+                                <div className="relative" ref={dropdownRef}>
+                                    <button
+                                        onClick={() => setShowDropdown(!showDropdown)}
+                                        className={cn(
+                                            "flex items-center justify-center p-0.5 rounded-full bg-[#1c1c1e] hover:bg-[#2c2c2e] border border-white/10 hover:border-white/20 transition-all duration-200 group cursor-pointer shadow-sm hover:shadow-md",
+                                            showDropdown && "bg-[#2c2c2e] border-white/20"
+                                        )}
+                                    >
+                                        {/* Avatar */}
+                                        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-inner ring-2 ring-black/20">
+                                            {user.photoURL ? (
+                                                <img src={user.photoURL} alt="User" className="w-full h-full rounded-full object-cover" />
+                                            ) : (
+                                                (user.displayName?.[0] || user.email?.[0] || 'U').toUpperCase()
+                                            )}
+                                        </div>
+                                    </button>
+
+                                    {/* Dropdown Menu */}
+                                    {showDropdown && (
+                                        <div className="absolute right-0 top-[calc(100%+1rem)] w-56 bg-[#0a0a0c]/98 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_40px_-5px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 origin-top-right ring-1 ring-white/5 z-50">
+
+                                            {/* Top specular highlight */}
+                                            <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
+
+                                            {/* User Info Header */}
+                                            <div className="p-4 border-b border-white/5 bg-white/[0.02] flex flex-col items-end relative">
+                                                <div className="absolute inset-0 bg-gradient-to-b from-white/[0.04] to-transparent pointer-events-none" />
+                                                <p className="text-[14px] font-bold tracking-wide text-white/95 truncate w-full text-right drop-shadow-md">{user.displayName || 'DomainGuard User'}</p>
+                                                <p className="text-[12px] font-medium text-white/50 truncate mt-0.5 w-full text-right">{user.email}</p>
+                                            </div>
+
+                                            {/* Actions */}
+                                            <div className="p-1.5 space-y-1 bg-black/20">
+                                                {user.email && ADMIN_EMAILS.includes(user.email) && (
+                                                    <a
+                                                        href="/admin"
+                                                        className="w-full flex items-center justify-end gap-3 px-3 py-2.5 text-[13px] font-medium text-emerald-400/90 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-xl transition-all cursor-pointer group"
+                                                    >
+                                                        Admin Dashboard
+                                                        <div className="relative flex h-2 w-2 shrink-0">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-50 group-hover:opacity-100"></span>
+                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+                                                        </div>
+                                                    </a>
+                                                )}
+
+                                                <button
+                                                    onClick={handleLogout}
+                                                    className="w-full flex items-center justify-end gap-3 px-3 py-2.5 text-[13px] font-medium text-red-400/80 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-all cursor-pointer group"
+                                                >
+                                                    Disconnect Session
+                                                    <LogOut size={16} className="text-red-400/70 group-hover:text-red-400 transition-colors" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setShowLogin(true)}
+                                    className="flex items-center gap-2 px-5 py-2 rounded-full bg-white text-black text-sm font-bold tracking-tight hover:bg-zinc-200 active:scale-95 transition-all shadow-lg hover:shadow-white/20 cursor-pointer"
+                                >
+                                    <LogIn size={14} strokeWidth={2.5} />
+                                    <span>Sign In</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </nav>
