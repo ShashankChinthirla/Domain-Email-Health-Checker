@@ -13,15 +13,22 @@ export async function getAdminMetrics() {
         const secureCount = await collection.countDocuments({ status: 'Secure' });
         const atRiskCount = totalDomains - secureCount;
 
-        // "Added Today" - simple mock or calculate based on timestamps if available
-        // For now we'll derive it from domains added in last 24h if we had real creation dates.
-        // Since we just seeded them all today, querying by date might just return 12000.
-        // We'll just return a dynamic baseline for demo 
+        // Calculate 'Added Today' dynamically
+        const oneDayAgo = new Date();
+        oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+        const addedToday = await collection.countDocuments({
+            $or: [
+                { createdAt: { $gte: oneDayAgo } },
+                { createdAt: { $exists: false }, issueCategory: 'Needs_Scan', timestamp: { $gte: oneDayAgo } }
+            ]
+        });
+
         return {
             totalDomains,
             secureCount,
             atRiskCount,
-            addedToday: 12, // Example fixed or calculated
+            addedToday,
             success: true
         };
     } catch (error) {
@@ -44,6 +51,8 @@ export async function getPaginatedDomains(query = "", issueFilter = "", page = 1
 
         if (issueFilter && issueFilter !== 'All') {
             filter.issueCategory = issueFilter;
+        } else {
+            filter.issueCategory = { $ne: 'Needs_Scan' };
         }
 
         const skip = (page - 1) * limit;

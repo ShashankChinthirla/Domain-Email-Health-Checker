@@ -1,0 +1,354 @@
+﻿{
+  "domain": "test-automation-webhook.com",
+  "rawSpf": null,
+  "rawDmarc": null,
+  "dmarcPolicy": null,
+  "mxRecords": [],
+  "score": 26,
+  "categories": {
+    "problems": {
+      "category": "Problems",
+      "tests": [
+        {
+          "name": "DNS Record Published",
+          "status": "Error",
+          "info": "Failed",
+          "reason": "DNS lookup failed entirely.",
+          "recommendation": "Check your domain registrar settings.",
+          "category": "DNS"
+        },
+        {
+          "name": "MX Record Published",
+          "status": "Error",
+          "info": "Missing",
+          "reason": "No MX records found.",
+          "recommendation": "You cannot receive email without MX records.",
+          "category": "DNS"
+        },
+        {
+          "name": "NS Record Published",
+          "status": "Error",
+          "info": "Missing",
+          "reason": "No Nameservers found.",
+          "recommendation": "Configure nameservers at your registrar.",
+          "category": "DNS"
+        },
+        {
+          "name": "SOA Record Published",
+          "status": "Warning",
+          "info": "Missing",
+          "reason": "SOA record not found.",
+          "recommendation": "Ensure your zone file is valid.",
+          "category": "DNS"
+        },
+        {
+          "name": "SPF Record Found",
+          "status": "Error",
+          "info": "Missing",
+          "reason": "No SPF record found.",
+          "recommendation": "Create a TXT record starting with v=spf1.",
+          "host": "test-automation-webhook.com",
+          "result": "SPF Record Missing",
+          "category": "SPF"
+        },
+        {
+          "name": "DMARC Record Found",
+          "status": "Error",
+          "info": "Missing",
+          "reason": "No DMARC record found at _dmarc.test-automation-webhook.com",
+          "recommendation": "Create a DMARC record to protect your domain.",
+          "host": "test-automation-webhook.com",
+          "result": "DMARC Record Missing",
+          "category": "DMARC"
+        },
+        {
+          "name": "HTTP Availability",
+          "status": "Error",
+          "info": "Unreachable",
+          "reason": "Could not connect via HTTP (Port 80).",
+          "recommendation": "Ensure your web server is running on port 80.",
+          "category": "Web Server"
+        },
+        {
+          "name": "HTTPS Availability",
+          "status": "Error",
+          "info": "Unreachable",
+          "reason": "Could not connect via HTTPS (Port 443).",
+          "recommendation": "Ensure your web server is running and port 443 is open.",
+          "category": "Web Server"
+        },
+        {
+          "name": "SSL Handshake",
+          "status": "Warning",
+          "info": "getaddrinfo ENOTFOUND test-automation-webhook.com",
+          "reason": "SSL Connection failed.",
+          "recommendation": "Check server TLS configuration.",
+          "category": "Web Server"
+        }
+      ],
+      "stats": {
+        "passed": 0,
+        "warnings": 2,
+        "errors": 7
+      }
+    },
+    "dns": {
+      "category": "DNS",
+      "tests": [
+        {
+          "name": "Local DNS Resolver",
+          "status": "Pass",
+          "info": "Google/Cloudflare (Safe)",
+          "reason": "Using trusted public resolvers (8.8.8.8, 1.1.1.1).",
+          "recommendation": "No action needed.",
+          "category": "DNS"
+        },
+        {
+          "name": "Apex CNAME",
+          "status": "Pass",
+          "info": "Not Found",
+          "reason": "No CNAME record found at root domain (RFC Compliant).",
+          "recommendation": "No action needed.",
+          "category": "DNS"
+        },
+        {
+          "name": "DNS Record Published",
+          "status": "Error",
+          "info": "Failed",
+          "reason": "DNS lookup failed entirely.",
+          "recommendation": "Check your domain registrar settings.",
+          "category": "DNS"
+        },
+        {
+          "name": "MX Record Published",
+          "status": "Error",
+          "info": "Missing",
+          "reason": "No MX records found.",
+          "recommendation": "You cannot receive email without MX records.",
+          "category": "DNS"
+        },
+        {
+          "name": "NS Record Published",
+          "status": "Error",
+          "info": "Missing",
+          "reason": "No Nameservers found.",
+          "recommendation": "Configure nameservers at your registrar.",
+          "category": "DNS"
+        },
+        {
+          "name": "SOA Record Published",
+          "status": "Warning",
+          "info": "Missing",
+          "reason": "SOA record not found.",
+          "recommendation": "Ensure your zone file is valid.",
+          "category": "DNS"
+        },
+        {
+          "name": "CAA Record",
+          "status": "Pass",
+          "info": "Not published (Optional)",
+          "reason": "No CAA records found.",
+          "recommendation": "Consider adding CAA records for better security.",
+          "category": "DNS"
+        }
+      ],
+      "stats": {
+        "passed": 3,
+        "warnings": 1,
+        "errors": 3
+      }
+    },
+    "spf": {
+      "category": "SPF",
+      "tests": [
+        {
+          "name": "SPF Record Found",
+          "status": "Error",
+          "info": "Missing",
+          "reason": "No SPF record found.",
+          "recommendation": "Create a TXT record starting with v=spf1.",
+          "host": "test-automation-webhook.com",
+          "result": "SPF Record Missing",
+          "category": "SPF"
+        }
+      ],
+      "stats": {
+        "passed": 0,
+        "warnings": 0,
+        "errors": 1
+      }
+    },
+    "dmarc": {
+      "category": "DMARC",
+      "tests": [
+        {
+          "name": "DMARC Record Found",
+          "status": "Error",
+          "info": "Missing",
+          "reason": "No DMARC record found at _dmarc.test-automation-webhook.com",
+          "recommendation": "Create a DMARC record to protect your domain.",
+          "host": "test-automation-webhook.com",
+          "result": "DMARC Record Missing",
+          "category": "DMARC"
+        }
+      ],
+      "stats": {
+        "passed": 0,
+        "warnings": 0,
+        "errors": 1
+      }
+    },
+    "dkim": {
+      "category": "DKIM",
+      "tests": [
+        {
+          "name": "DKIM Selectors",
+          "status": "Pass",
+          "info": "Info: Selector not discoverable",
+          "reason": "Common selectors were checked but not found. This is normal if you use custom selectors.",
+          "recommendation": "No action needed unless you are missing DKIM.",
+          "category": "DKIM"
+        }
+      ],
+      "stats": {
+        "passed": 1,
+        "warnings": 0,
+        "errors": 0
+      }
+    },
+    "blacklist": {
+      "category": "Blacklist",
+      "tests": [
+        {
+          "name": "Spamhaus DBL",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "test-automation-webhook.com is clean on Spamhaus DBL",
+          "recommendation": "No action needed.",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SURBL (multi)",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "test-automation-webhook.com is clean on SURBL (multi)",
+          "recommendation": "No action needed.",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SEM FRESH",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "test-automation-webhook.com is clean on SEM FRESH",
+          "recommendation": "No action needed.",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SEM URI",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "test-automation-webhook.com is clean on SEM URI",
+          "recommendation": "No action needed.",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SEM URIRED",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "test-automation-webhook.com is clean on SEM URIRED",
+          "recommendation": "No action needed.",
+          "category": "Blacklist"
+        },
+        {
+          "name": "ivmURI",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "test-automation-webhook.com is clean on ivmURI",
+          "recommendation": "No action needed.",
+          "category": "Blacklist"
+        },
+        {
+          "name": "NordSpam DBL",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "test-automation-webhook.com is clean on NordSpam DBL",
+          "recommendation": "No action needed.",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SORBS RHSBL",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "test-automation-webhook.com is clean on SORBS RHSBL",
+          "recommendation": "No action needed.",
+          "category": "Blacklist"
+        }
+      ],
+      "stats": {
+        "passed": 8,
+        "warnings": 0,
+        "errors": 0
+      }
+    },
+    "webServer": {
+      "category": "Web Server",
+      "tests": [
+        {
+          "name": "HTTP Availability",
+          "status": "Error",
+          "info": "Unreachable",
+          "reason": "Could not connect via HTTP (Port 80).",
+          "recommendation": "Ensure your web server is running on port 80.",
+          "category": "Web Server"
+        },
+        {
+          "name": "HTTPS Availability",
+          "status": "Error",
+          "info": "Unreachable",
+          "reason": "Could not connect via HTTPS (Port 443).",
+          "recommendation": "Ensure your web server is running and port 443 is open.",
+          "category": "Web Server"
+        },
+        {
+          "name": "SSL Handshake",
+          "status": "Warning",
+          "info": "getaddrinfo ENOTFOUND test-automation-webhook.com",
+          "reason": "SSL Connection failed.",
+          "recommendation": "Check server TLS configuration.",
+          "category": "Web Server"
+        }
+      ],
+      "stats": {
+        "passed": 0,
+        "warnings": 1,
+        "errors": 2
+      }
+    },
+    "smtp": {
+      "category": "SMTP",
+      "tests": [
+        {
+          "name": "SMTP Connect",
+          "status": "Pass",
+          "info": "Skipped (Passive)",
+          "reason": "We do not perform active SMTP probing (sending test packets) to ensure legal safety and avoid blacklisting.",
+          "recommendation": "This is a passive health check tool.",
+          "category": "SMTP"
+        },
+        {
+          "name": "Open Relay",
+          "status": "Pass",
+          "info": "Skipped (Passive)",
+          "reason": "Open relay testing requires active intrusion attempts, which we strictly avoid.",
+          "recommendation": "Use internal tools to verify relay security.",
+          "category": "SMTP"
+        }
+      ],
+      "stats": {
+        "passed": 2,
+        "warnings": 0,
+        "errors": 0
+      }
+    }
+  }
+}

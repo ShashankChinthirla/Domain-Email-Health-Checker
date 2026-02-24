@@ -66,7 +66,8 @@ export async function POST() {
                 dmarcFull: null,
                 user: null, // Unknown until scanned
                 healthStatus: 'Awaiting initial automation scan',
-                timestamp: new Date()
+                timestamp: new Date(),
+                createdAt: new Date()
             }));
 
             await collection.insertMany(docsToInsert);

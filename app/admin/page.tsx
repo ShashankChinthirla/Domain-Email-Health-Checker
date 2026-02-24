@@ -166,6 +166,42 @@ export default function AdminPage() {
     }
   };
 
+  const [isDownloadingAutomation, setIsDownloadingAutomation] = useState(false);
+
+  const handleDownloadAutomationReport = async () => {
+    setIsDownloadingAutomation(true);
+    try {
+      // The Python script saves reports directly to the 'reports' MongoDB collection
+      const response = await fetch('/api/download-automation-report');
+      if (!response.ok) {
+        throw new Error('Failed to fetch automation report. It might not exist yet.');
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'latest_automation_report.xlsx';
+      if (contentDisposition && contentDisposition.includes('filename=')) {
+        filename = contentDisposition.split('filename=')[1].replace(/"/g, '');
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+    } catch (error: any) {
+      console.error("Failed to download automation report:", error);
+      alert(error.message || "Failed to download the automation report.");
+    } finally {
+      setIsDownloadingAutomation(false);
+    }
+  };
+
+
   const handleSyncCloudflare = async () => {
     setIsSyncing(true);
     try {
@@ -494,9 +530,18 @@ export default function AdminPage() {
                   <p className="text-xs text-white/40 mt-0.5">Live execution logs from Python workers</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 rounded-full border border-white/5">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-emerald-500/80 uppercase tracking-widest">Live Sync</span>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleDownloadAutomationReport}
+                  disabled={isDownloadingAutomation}
+                  className="flex items-center gap-2 px-4 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold rounded-lg border border-emerald-500/20 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {isDownloadingAutomation ? 'Fetching Latest...' : 'Download Latest Run Report'}
+                </button>
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 rounded-full border border-white/5">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] font-bold text-emerald-500/80 uppercase tracking-widest">Live Sync</span>
+                </div>
               </div>
             </div>
 

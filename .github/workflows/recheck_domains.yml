@@ -1,0 +1,27 @@
+name: 10-Day Domain Rescan
+
+on:
+  schedule:
+    # Run at midnight (00:00 UTC) on the 1st, 11th, and 21st of every month
+    - cron: '0 0 1,11,21 * *'
+  workflow_dispatch: # Allows you to manually click a "Run workflow" button from GitHub UI
+
+jobs:
+  rescan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Run Deep Domain Rescan Engine
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: npx tsx scripts/rescan_db.ts --all

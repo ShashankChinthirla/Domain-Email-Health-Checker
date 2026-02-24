@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
 
         if (issueFilter && issueFilter !== 'All') {
             filter.issueCategory = issueFilter;
+        } else {
+            filter.issueCategory = { $ne: 'Needs_Scan' };
         }
 
         // Fetch all matching domains for the report

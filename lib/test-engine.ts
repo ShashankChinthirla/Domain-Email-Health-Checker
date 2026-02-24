@@ -1019,26 +1019,26 @@ async function runWebServerTests(domain: string): Promise<TestResult[]> {
 export async function runFullHealthCheck(domain: string): Promise<FullHealthReport> {
     // 1. Initial independent tests (Immediate Parallel)
     // We wrap each in withTimeout to ensure logic never hangs
-    const pDNS = withTimeout(runDNSTests(domain), 3000, [{
+    const pDNS = withTimeout(runDNSTests(domain), 8000, [{
         name: 'DNS Check', status: 'Warning', info: 'Timed Out', reason: 'DNS tests took too long.', recommendation: 'Refresh to retry.'
     }], 'DNS');
 
-    const pSPF = withTimeout(runSPFTests(domain), 4000, {
+    const pSPF = withTimeout(runSPFTests(domain), 10000, {
         rawSpf: null,
         tests: [{ name: 'SPF Check', status: 'Warning', info: 'Timed Out', reason: 'SPF check exceeded time limit.', recommendation: 'Try again.' }]
     }, 'SPF');
 
-    const pDMARC = withTimeout(runDMARCTests(domain), 4000, {
+    const pDMARC = withTimeout(runDMARCTests(domain), 10000, {
         rawDmarc: null,
         tests: [{ name: 'DMARC Check', status: 'Warning', info: 'Timed Out', reason: 'DMARC check exceeded time limit.', recommendation: 'Try again.' }]
     }, 'DMARC');
 
-    const pDKIM = withTimeout(runDKIMTests(domain), 3000, [{
+    const pDKIM = withTimeout(runDKIMTests(domain), 8000, [{
         name: 'DKIM Check', status: 'Warning', info: 'Timed Out', reason: 'DKIM selectors check took too long.', recommendation: 'No action needed.'
     }], 'DKIM');
 
-    const pWeb = withTimeout(runWebServerTests(domain), 4000, [{
-        name: 'Web Server', status: 'Warning', info: 'Timed Out', reason: 'Web server checks exceeded 4s.', recommendation: 'Check site manually.'
+    const pWeb = withTimeout(runWebServerTests(domain), 12000, [{
+        name: 'Web Server', status: 'Warning', info: 'Timed Out', reason: 'Web server checks exceeded timeframe.', recommendation: 'Check site manually.'
     }], 'Web');
 
     // 2. Blacklist Logic (Parallel & Decoupled)
@@ -1052,7 +1052,7 @@ export async function runFullHealthCheck(domain: string): Promise<FullHealthRepo
 
     const pIpBlacklist = mxLookup.then(async (mxs) => {
         if (mxs.length === 0) return [];
-        return withTimeout(runBlacklistTestsWithMX(domain, mxs), 5000, [], 'IPBlacklist');
+        return withTimeout(runBlacklistTestsWithMX(domain, mxs), 12000, [], 'IPBlacklist');
     });
 
     // Combined Blacklist Resolver

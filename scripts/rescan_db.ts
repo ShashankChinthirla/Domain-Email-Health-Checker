@@ -71,34 +71,27 @@ function calculateIssuesCount(report: any): number {
     return count;
 }
 
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-async function processDomainWithRetry(doc: any, collection: any): Promise<any> {
-    const MAX_RETRIES = 3;
-    let attempt = 0;
-
-    while (attempt < MAX_RETRIES) {
-        attempt++;
+// Batch processor function
+async function processBatch(documents: any[], collection: any) {
+    const promises = documents.map(async (doc) => {
         try {
+            // Run the deep test engine!
             const report = await runFullHealthCheck(doc.domain);
+
             const newCategory = determineIssueCategory(report);
 
             if (newCategory === 'SYSTEM_TIMEOUT') {
-                console.log(`[TIMEOUT - RETRYING ${attempt}/${MAX_RETRIES}] ${doc.domain}`);
-                if (attempt < MAX_RETRIES) {
-                    await delay(5000 * attempt); // exponential backoff
-                    continue;
-                } else {
-                    return { success: false, domain: doc.domain, error: 'TIMEOUT_AFTER_RETRIES' };
-                }
+                return { success: false, domain: doc.domain, error: 'TIMEOUT_OR_DNS_ERROR_SKIPPED' };
             }
 
             const newIssuesCount = calculateIssuesCount(report);
             const newStatus = newCategory === 'Clean' ? 'Secure' : 'At Risk';
 
+            // Use the raw textual records directly from the report object
             const spfRecord = report.rawSpf || doc.spfFull;
             const dmarcRecord = report.rawDmarc || doc.dmarcFull;
 
+            // Update matching structure
             await collection.updateOne(
                 { _id: doc._id },
                 {
@@ -112,20 +105,12 @@ async function processDomainWithRetry(doc: any, collection: any): Promise<any> {
                 }
             );
             return { success: true, domain: doc.domain, oldCat: doc.issueCategory, newCat: newCategory };
-
         } catch (error) {
-            console.error(`[ERROR - RETRYING ${attempt}/${MAX_RETRIES}] ${doc.domain}:`, error);
-            if (attempt < MAX_RETRIES) {
-                await delay(5000 * attempt);
-            } else {
-                return { success: false, domain: doc.domain, error };
-            }
+            console.error(`Error processing ${doc.domain}:`, error);
+            return { success: false, domain: doc.domain, error };
         }
-    }
-}
+    });
 
-async function processBatch(documents: any[], collection: any) {
-    const promises = documents.map(doc => processDomainWithRetry(doc, collection));
     return await Promise.all(promises);
 }
 
@@ -139,29 +124,17 @@ async function runRescan() {
         const db = client.db('vercel');
         const collection = db.collection('issue_domains');
 
+        // Scan based on CLI arguments
         const scanAll = process.argv.includes('--all');
-        const scanNew = process.argv.includes('--new');
-
-        let query;
-        if (scanNew) {
-            query = { issueCategory: 'Needs_Scan' };
-        } else if (scanAll) {
-            query = { issueCategory: { $ne: 'Needs_Scan' } };
-        } else {
-            query = { issueCategory: { $nin: ['Clean', 'Needs_Scan'] } };
-        }
-
-        const skipArgIndex = process.argv.indexOf('--skip');
-        const skipCount = skipArgIndex !== -1 ? parseInt(process.argv[skipArgIndex + 1], 10) : 0;
+        const query = scanAll ? { issueCategory: { $ne: 'Needs_Scan' } } : { issueCategory: { $nin: ['Clean', 'Needs_Scan'] } };
 
         const totalToScan = await collection.countDocuments(query);
-        const scanTypeText = scanNew ? 'NEW DOMAINS ONLY' : (scanAll ? 'ALL DOMAINS' : 'TARGETED FIX');
-        console.log(`\nFound ${totalToScan} domains for evaluation (${scanTypeText}). Skipping first ${skipCount}.\n`);
+        console.log(`\nFound ${totalToScan} domains for evaluation (${scanAll ? 'ALL DOMAINS' : 'TARGETED FIX'}).\n`);
 
-        const cursor = collection.find(query).skip(skipCount);
+        const cursor = collection.find(query);
 
-        let processed = skipCount;
-        const BATCH_SIZE = 5;
+        let processed = 0;
+        const BATCH_SIZE = 5; // Lower concurrency to 5 parallel network requests to prevent false timeouts
         let batch = [];
 
         while (await cursor.hasNext()) {
@@ -172,17 +145,12 @@ async function runRescan() {
                 const results = await processBatch(batch, collection);
                 processed += batch.length;
 
+                // Logging changes
                 results.forEach((r: any) => {
-                    if (r.success) {
-                        if (r.oldCat !== r.newCat) {
-                            console.log(`[UPDATED] ${r.domain} : ${r.oldCat} -> ${r.newCat}`);
-                        } else {
-                            console.log(`[VERIFIED] ${r.domain} remains ${r.newCat}`);
-                        }
-                    } else if (!r.success && r.error === 'TIMEOUT_AFTER_RETRIES') {
-                        console.log(`[SKIPPED - FAILED AFTER 3 RETRIES] ${r.domain} (Timeout Error)`);
-                    } else {
-                        console.log(`[FAILED] ${r.domain} : ${r.error}`);
+                    if (r.success && r.oldCat !== r.newCat) {
+                        console.log(`[FIXED] ${r.domain} : ${r.oldCat} -> ${r.newCat}`);
+                    } else if (!r.success && r.error === 'TIMEOUT_OR_DNS_ERROR_SKIPPED') {
+                        console.log(`[SKIPPED - RATE LIMITED] ${r.domain} (Timeout or DNS Error)`);
                     }
                 });
 
@@ -191,20 +159,15 @@ async function runRescan() {
             }
         }
 
+        // Process remaining tail
         if (batch.length > 0) {
             const results = await processBatch(batch, collection);
             processed += batch.length;
             results.forEach((r: any) => {
-                if (r.success) {
-                    if (r.oldCat !== r.newCat) {
-                        console.log(`[UPDATED] ${r.domain} : ${r.oldCat} -> ${r.newCat}`);
-                    } else {
-                        console.log(`[VERIFIED] ${r.domain} remains ${r.newCat}`);
-                    }
-                } else if (!r.success && r.error === 'TIMEOUT_AFTER_RETRIES') {
-                    console.log(`[SKIPPED - FAILED AFTER 3 RETRIES] ${r.domain} (Timeout Error)`);
-                } else {
-                    console.log(`[FAILED] ${r.domain} : ${r.error}`);
+                if (r.success && r.oldCat !== r.newCat) {
+                    console.log(`[FIXED] ${r.domain} : ${r.oldCat} -> ${r.newCat}`);
+                } else if (!r.success && r.error === 'TIMEOUT_OR_DNS_ERROR_SKIPPED') {
+                    console.log(`[SKIPPED - RATE LIMITED] ${r.domain} (Timeout or DNS Error)`);
                 }
             });
             console.log(`Progress: ${processed} / ${totalToScan} (100%)`);

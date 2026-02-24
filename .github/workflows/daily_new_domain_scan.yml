@@ -1,0 +1,40 @@
+name: Daily Cloudflare Sync & New Domain Scan
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # Runs at 05:00 UTC (10:30 AM IST) every day
+  workflow_dispatch: # Allows manual triggering as well
+
+jobs:
+  sync-and-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Sync New Cloudflare Domains
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          # The Sync API endpoint acts as a webhook. We can CURL the production sync URL, 
+          # but to be safe and standalone we can just run a quick script or curl the live project.
+          # Assuming the domain checker URL is set as a secret. If not, the script below will scan
+          # all domains already in the DB with "Needs_Scan". For automated syncing before the scan, 
+          # you can optionally curl your live Vercel app here before the scan step.
+          echo "Syncing is handled manually or via external webhook. Proceeding to scan existing 'Needs_Scan' targets..."
+
+      - name: Run Background Scanner For New Domains ONLY
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: npx tsx scripts/rescan_db_v3.ts --new
