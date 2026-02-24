@@ -1,0 +1,42 @@
+name: Manual DB Rescan (V3)
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_all:
+        description: 'Scan ALL domains (except Needs_Scan)'
+        required: true
+        type: boolean
+        default: true
+      skip_count:
+        description: 'Number of domains to skip (for resuming)'
+        required: false
+        type: string
+        default: "0"
+
+jobs:
+  rescan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Rescan Script
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          if [ "${{ github.event.inputs.scan_all }}" = "true" ]; then
+            npx tsx scripts/rescan_db_v3.ts --all --skip ${{ github.event.inputs.skip_count }}
+          else
+            npx tsx scripts/rescan_db_v3.ts --skip ${{ github.event.inputs.skip_count }}
+          fi
