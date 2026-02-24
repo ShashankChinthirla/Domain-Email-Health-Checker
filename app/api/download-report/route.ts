@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
             Status: d.status,
             'Issue Category': d.issueCategory || 'Clean',
             'Issues Detected': d.issuesDetected,
+            'User': d.user || 'Unassigned',
             'SPF Record': d.updatedSpfFull || d.spfFull || 'N/A',
             'DMARC Record': d.updatedDmarcFull || d.dmarcFull || 'N/A',
             'Last Scanned': d.timestamp ? new Date(d.timestamp).toISOString() : 'Unknown'
@@ -47,14 +48,28 @@ export async function GET(request: NextRequest) {
                 Status: '',
                 'Issue Category': '',
                 'Issues Detected': 0,
+                'User': '',
                 'SPF Record': '',
                 'DMARC Record': '',
                 'Last Scanned': ''
-            });
+            } as any);
         }
 
         // Generate Excel Workbook
         const worksheet = xlsx.utils.json_to_sheet(data);
+
+        // Add padding / column widths for better aesthetics
+        worksheet['!cols'] = [
+            { wch: 40 }, // Domain
+            { wch: 15 }, // Status
+            { wch: 25 }, // Issue Category
+            { wch: 18 }, // Issues Detected
+            { wch: 25 }, // User
+            { wch: 60 }, // SPF Record
+            { wch: 60 }, // DMARC Record
+            { wch: 30 }  // Last Scanned
+        ];
+
         const workbook = xlsx.utils.book_new();
         xlsx.utils.book_append_sheet(workbook, worksheet, "Fleet Report");
 
