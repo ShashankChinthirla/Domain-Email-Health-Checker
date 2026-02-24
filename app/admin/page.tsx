@@ -182,9 +182,9 @@ export default function AdminPage() {
       // A quick toggle of the filter to force a re-fetch of the current view
       setIssueFilter(prev => prev);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Sync failed:", error);
-      alert("Failed to sync with Cloudflare.");
+      alert(error.message || "Failed to sync with Cloudflare.");
     } finally {
       setIsSyncing(false);
     }
@@ -241,7 +241,7 @@ export default function AdminPage() {
           <button
             onClick={() => setActiveTab('overview')}
             className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2",
+              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer",
               activeTab === 'overview' ? "text-white border-white" : "text-white/40 border-transparent hover:text-white/70"
             )}
           >
@@ -250,7 +250,7 @@ export default function AdminPage() {
           <button
             onClick={() => setActiveTab('fleet')}
             className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2",
+              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer",
               activeTab === 'fleet' ? "text-blue-400 border-blue-400" : "text-white/40 border-transparent hover:text-white/70"
             )}
           >
@@ -259,7 +259,7 @@ export default function AdminPage() {
           <button
             onClick={() => setActiveTab('automation')}
             className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2",
+              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer",
               activeTab === 'automation' ? "text-emerald-400 border-emerald-400" : "text-white/40 border-transparent hover:text-white/70"
             )}
           >
