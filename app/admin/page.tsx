@@ -466,13 +466,17 @@ export default function AdminPage() {
                         </td>
                         <td className="p-4">
                           {entity.user ? (
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[11px] font-bold shadow-sm shrink-0">
                                 {entity.user.charAt(0).toUpperCase()}
                               </div>
-                              <span className="text-[13px] text-gray-700 font-medium truncate max-w-[120px]" title={entity.user}>
+                              <a
+                                href={`mailto:${entity.user}?subject=Security Update Required for ${entity.domain}`}
+                                className="text-[13px] text-gray-700 font-semibold hover:text-blue-600 hover:underline transition-colors break-all"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 {entity.user}
-                              </span>
+                              </a>
                             </div>
                           ) : (
                             <span className="text-[12px] text-gray-400 font-medium italic bg-gray-100 px-2 py-0.5 rounded-md">
