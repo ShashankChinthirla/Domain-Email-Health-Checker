@@ -120,22 +120,18 @@ export function Navbar({ searchState }: NavbarProps) {
                                                 {user.email && ADMIN_EMAILS.includes(user.email) && (
                                                     <a
                                                         href="/admin"
-                                                        className="w-full flex items-center justify-end gap-3 px-3 py-2.5 text-[13px] font-medium text-emerald-400/90 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-xl transition-all cursor-pointer group"
+                                                        className="w-full flex items-center justify-end gap-3 px-3 py-2 text-[13px] font-medium text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-all cursor-pointer group"
                                                     >
                                                         Admin Dashboard
-                                                        <div className="relative flex h-2 w-2 shrink-0">
-                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-50 group-hover:opacity-100"></span>
-                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-                                                        </div>
                                                     </a>
                                                 )}
 
                                                 <button
                                                     onClick={handleLogout}
-                                                    className="w-full flex items-center justify-end gap-3 px-3 py-2.5 text-[13px] font-medium text-red-400/80 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-all cursor-pointer group"
+                                                    className="w-full flex items-center justify-end gap-3 px-3 py-2 text-[13px] font-medium text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-all cursor-pointer group"
                                                 >
                                                     Disconnect Session
-                                                    <LogOut size={16} className="text-red-400/70 group-hover:text-red-400 transition-colors" />
+                                                    <LogOut size={16} className="text-white/40 group-hover:text-white/80 transition-colors" />
                                                 </button>
                                             </div>
                                         </div>

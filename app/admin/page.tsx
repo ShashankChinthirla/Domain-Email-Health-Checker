@@ -490,11 +490,9 @@ function AdminDashboardContent() {
                                 {entity.user.charAt(0).toUpperCase()}
                               </div>
                               <a
-                                href={`https://mail.google.com/mail/?view=cm&fs=1&to=${entity.user}&su=Security%20Update%20Required%20for%20${entity.domain}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="Click to send an email to this owner"
-                                className="inline-block text-[13px] text-blue-600 font-bold hover:underline hover:text-blue-800 transition-colors cursor-pointer truncate max-w-[180px] align-middle"
+                                href={`mailto:${entity.user}?subject=Security Update Required for ${entity.domain}`}
+                                title={`Click to send an email to this owner\n${entity.user}`}
+                                className="inline text-[13px] text-blue-600 font-bold hover:underline hover:text-blue-800 transition-colors cursor-pointer"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {entity.user}
