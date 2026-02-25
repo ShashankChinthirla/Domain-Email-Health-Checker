@@ -34,7 +34,36 @@ export default function AdminPage() {
   const router = useRouter();
 
   // TABS
-  const [activeTab, setActiveTab] = useState<'overview' | 'fleet' | 'automation'>('overview');
+  const [activeTabState, setActiveTabState] = useState<'overview' | 'fleet' | 'automation'>('overview');
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const tabParam = params.get('tab') as 'overview' | 'fleet' | 'automation' | null;
+        if (tabParam && ['overview', 'fleet', 'automation'].includes(tabParam)) {
+          setActiveTabState(tabParam);
+        } else {
+          setActiveTabState('overview');
+        }
+      }
+    };
+
+    handleUrlChange();
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
+  const setActiveTab = (tab: 'overview' | 'fleet' | 'automation') => {
+    setActiveTabState(tab);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.pushState({}, '', url.toString());
+    }
+  };
+
+  const activeTab = activeTabState;
 
   // METRICS STATE
   const [metrics, setMetrics] = useState({ totalDomains: 0, secureCount: 0, atRiskCount: 0, addedToday: 0 });
@@ -454,7 +483,7 @@ export default function AdminPage() {
                               </div>
                               <a
                                 href={`mailto:${entity.user}?subject=Security Update Required for ${entity.domain}`}
-                                className="text-[13px] text-blue-600 font-semibold underline decoration-blue-300 hover:decoration-blue-600 hover:text-blue-800 transition-colors break-all underline-offset-[3px]"
+                                className="text-[13px] text-blue-600 font-bold hover:text-blue-800 hover:underline hover:bg-blue-50 px-1 py-0.5 rounded transition-all break-all underline-offset-4 decoration-blue-400"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {entity.user}
