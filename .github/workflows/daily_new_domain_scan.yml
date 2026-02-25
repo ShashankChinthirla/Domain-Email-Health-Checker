@@ -22,15 +22,32 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Sync New Cloudflare Domains
+      - name: Stage 1 - Sync New Cloudflare Domains
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
         run: |
-          # We run the dedicated CLI sync script directly to safely bypass needing a live production URL
+          echo "🚀 Pulling newest domains from Cloudflare..."
           npx tsx scripts/sync_cloudflare.ts
 
-      - name: Run Background Scanner For New Domains ONLY
+      - name: Stage 2 - Cross-Collection User Mapping
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
-        run: npx tsx scripts/rescan_db_v3.ts --new
+        run: |
+          echo "👥 Matching domain owners from dfyinfrasetups..."
+          npx tsx scripts/sync_users.ts
+
+      - name: Stage 3 - Native Cloudflare DNS Security Injection
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          echo "🛡️ Injecting strict SPF/DMARC and backing up legacy DNS..."
+          npx tsx scripts/update_cloudflare_dns.ts
+
+      - name: Stage 4 - Deep DNS Rescan Validation
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          echo "🔍 Veryifying updates with strict deep scanner..."
+          npx tsx scripts/rescan_db_v3.ts --new
