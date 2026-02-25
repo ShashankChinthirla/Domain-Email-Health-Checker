@@ -18,10 +18,7 @@ export async function getAdminMetrics() {
         oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
         const addedToday = await collection.countDocuments({
-            $or: [
-                { createdAt: { $gte: oneDayAgo } },
-                { createdAt: { $exists: false }, issueCategory: 'Needs_Scan', timestamp: { $gte: oneDayAgo } }
-            ]
+            createdAt: { $gte: oneDayAgo }
         });
 
         return {

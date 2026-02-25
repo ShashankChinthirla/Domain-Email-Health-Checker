@@ -24,6 +24,7 @@ interface MongoDomain {
   status: 'Secure' | 'At Risk' | 'Warning';
   issuesDetected: number;
   timestamp: string | null;
+  user?: string;
 }
 
 const ADMIN_EMAILS = ['shashankshashankc39@gmail.com', 'paybalc06@gmail.com'];
@@ -421,6 +422,7 @@ export default function AdminPage() {
                   <tr className="text-[12px] text-gray-500 font-semibold tracking-wide">
                     <th className="p-4 pl-6 font-medium">Domain Name</th>
                     <th className="p-4 font-medium">Status</th>
+                    <th className="p-4 font-medium">Owner</th>
                     <th className="p-4 font-medium">Issues Detected</th>
                     <th className="p-4 font-medium hidden md:table-cell">Last Scanned</th>
                     <th className="p-4 w-12 text-center"></th>
@@ -460,6 +462,22 @@ export default function AdminPage() {
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                               <span className="text-[13px] font-medium">Warning</span>
                             </div>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          {entity.user ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">
+                                {entity.user.charAt(0).toUpperCase()}
+                              </div>
+                              <span className="text-[13px] text-gray-700 font-medium truncate max-w-[120px]" title={entity.user}>
+                                {entity.user}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[12px] text-gray-400 font-medium italic bg-gray-100 px-2 py-0.5 rounded-md">
+                              Unknown
+                            </span>
                           )}
                         </td>
                         <td className="p-4">
