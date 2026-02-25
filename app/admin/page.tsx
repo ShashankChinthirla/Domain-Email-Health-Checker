@@ -9,6 +9,9 @@ import { cn } from '@/lib/utils';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { getAdminMetrics, getPaginatedDomains } from '@/app/admin/actions';
+import { getUserSettings } from '@/app/settings/actions';
+import { UserSettings, DEFAULT_SETTINGS } from '@/app/settings/types';
+import { isAdmin } from '@/lib/roles';
 
 interface LogEntry {
   id: string;
@@ -25,9 +28,15 @@ interface MongoDomain {
   issuesDetected: number;
   timestamp: string | null;
   user?: string;
+  issueCategory?: string;
+  issues?: {
+    spf?: string;
+    dmarc?: string;
+    dkim?: string;
+    blacklist?: string;
+    web?: string;
+  };
 }
-
-const ADMIN_EMAILS = ['shashankshashankc39@gmail.com', 'paybalc06@gmail.com'];
 
 export default function AdminPage() {
   return (
@@ -39,6 +48,7 @@ export default function AdminPage() {
 
 function AdminDashboardContent() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
+  const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -53,8 +63,75 @@ function AdminDashboardContent() {
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const currentPage = isNaN(pageParam) ? 1 : pageParam;
 
+  const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
+
+  useEffect(() => {
+    setLocalSearchQuery(searchQuery);
+  }, [searchQuery]);
+
   // METRICS STATE
   const [metrics, setMetrics] = useState({ totalDomains: 0, secureCount: 0, atRiskCount: 0, addedToday: 0 });
+  const [userSettings, setUserSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+
+  const getEmailLink = (domain: MongoDomain) => {
+    if (!domain.user) return '#';
+    const ownerEmail = domain.user;
+
+    let subject = "";
+    let finalMessage = "";
+
+    // Build the dynamic issue context based on what was actually flagged
+    const issuesList: string[] = [];
+    if (domain.issues) {
+      const { spf, dmarc, dkim, blacklist, web } = domain.issues;
+
+      if (blacklist && blacklist.includes("ERROR")) {
+        issuesList.push("- Your domain/IP is currently listed on major email blacklists, which will cause your outgoing emails to bounce or land in spam folders.");
+      }
+      if (spf && spf.toLowerCase().includes("no spf")) {
+        issuesList.push("- Your domain is missing an SPF record, making it trivial for attackers to spoof your email address.");
+      } else if (spf && spf.toLowerCase().includes("multiple")) {
+        issuesList.push("- Your domain has multiple conflicting SPF records, which invalidates your security policies.");
+      }
+      if (dmarc && dmarc.toLowerCase().includes("no dmarc")) {
+        issuesList.push("- Your domain is missing a DMARC record, meaning you have no visibility or control over spoofed emails sent on your behalf.");
+      }
+      if (dkim && dkim.includes("ERROR")) {
+        issuesList.push("- We detected issues with your DKIM email signing configuration.");
+      }
+      if (web && web.includes("ERROR")) {
+        issuesList.push("- Your primary web server is unreachable or returning critical HTTP errors.");
+      }
+    }
+
+    if (issuesList.length > 0) {
+      subject = `Action Required: Security Update for ${domain.domain}`;
+      const dynamicContext = "\n\nSpecifically, our automated scan detected the following:\n" + issuesList.join('\n');
+      finalMessage = userSettings.messageTemplate + dynamicContext;
+    } else {
+      subject = `Security Audit Results for ${domain.domain}`;
+      finalMessage = `Hi,\n\nI recently ran a security audit on your domain (${domain.domain}) and I wanted to personally reach out and say great job.\n\nYour SPF, DMARC, and DKIM records are perfectly configured and your domain is completely secure against spoofing attacks. Your email infrastructure is in excellent health!`;
+    }
+
+    // Base template from settings + injected dynamic context
+    let bodyText = finalMessage;
+
+    if (userSettings.senderName || userSettings.senderTitle || userSettings.senderPhone) {
+      bodyText += '\n\n---\n';
+      if (userSettings.senderName) bodyText += `${userSettings.senderName}\n`;
+      if (userSettings.senderTitle) bodyText += `${userSettings.senderTitle}\n`;
+      if (userSettings.senderPhone) bodyText += `${userSettings.senderPhone}\n`;
+    }
+    const subjectEncoded = encodeURIComponent(subject);
+    const bodyEncoded = encodeURIComponent(bodyText);
+
+    if (userSettings.emailClient === 'gmail') {
+      return `https://mail.google.com/mail/?view=cm&fs=1&to=${ownerEmail}&su=${subjectEncoded}&body=${bodyEncoded}`;
+    } else if (userSettings.emailClient === 'outlook') {
+      return `https://outlook.live.com/mail/0/deeplink/compose?to=${ownerEmail}&subject=${subjectEncoded}&body=${bodyEncoded}`;
+    }
+    return `mailto:${ownerEmail}?subject=${subjectEncoded}&body=${bodyEncoded}`;
+  };
 
   const [domains, setDomains] = useState<MongoDomain[]>([]);
   const [totalPages, setTotalPages] = useState(1);
@@ -86,6 +163,15 @@ function AdminDashboardContent() {
   };
   const setCurrentPage = (p: number) => updateUrlParams({ page: p > 1 ? p.toString() : null });
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localSearchQuery !== searchQuery) {
+        setSearchQuery(localSearchQuery);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [localSearchQuery, searchQuery]);
+
   // LOGS STATE (Firebase)
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
@@ -95,22 +181,29 @@ function AdminDashboardContent() {
 
   // AUTH GUARD
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser === null) {
         router.push('/');
-      } else if (currentUser.email && !ADMIN_EMAILS.includes(currentUser.email)) {
-        router.push('/');
-      } else {
-        setUser(currentUser);
+      } else if (currentUser.email) {
+        const adminStatus = await isAdmin(currentUser.email);
+        if (!adminStatus) {
+          router.push('/');
+        } else {
+          setIsUserAdmin(true);
+          setUser(currentUser);
+        }
       }
     });
     return () => unsubscribe();
   }, [router]);
 
-  // FETCH METRICS
+  // FETCH METRICS & SETTINGS
   useEffect(() => {
-    if (user && ADMIN_EMAILS.includes(user.email!)) {
-      getAdminMetrics().then(res => {
+    if (user && isUserAdmin) {
+      getUserSettings(user.email!).then(res => {
+        if (res.success && res.settings) setUserSettings(res.settings);
+      });
+      getAdminMetrics(user.email!).then(res => {
         if (res.success) {
           setMetrics({
             totalDomains: res.totalDomains!,
@@ -121,16 +214,16 @@ function AdminDashboardContent() {
         }
       });
     }
-  }, [user]);
+  }, [user, isUserAdmin]);
 
   // FETCH DOMAINS
   useEffect(() => {
-    if (!user || !ADMIN_EMAILS.includes(user.email!)) return;
+    if (!user || !isUserAdmin) return;
 
     let isMounted = true;
     const fetchDomains = async () => {
       setIsDomainsLoading(true);
-      const res = await getPaginatedDomains(searchQuery, issueFilter, currentPage, itemsPerPage);
+      const res = await getPaginatedDomains(user.email!, searchQuery, issueFilter, currentPage, itemsPerPage);
       if (res.success && isMounted) {
         setDomains(res.domains as MongoDomain[]);
         setTotalPages(res.totalPages!);
@@ -148,7 +241,7 @@ function AdminDashboardContent() {
 
   // FETCH LOGS
   useEffect(() => {
-    if (!user || !ADMIN_EMAILS.includes(user.email!)) return;
+    if (!user || !isUserAdmin) return;
 
     const q = query(
       collection(db, 'automation_logs'),
@@ -172,6 +265,7 @@ function AdminDashboardContent() {
     setIsDownloading(true);
     try {
       const urlParams = new URLSearchParams();
+      if (user && user.email) urlParams.append('email', user.email);
       if (searchQuery) urlParams.append('query', searchQuery);
       if (issueFilter && issueFilter !== 'All') urlParams.append('filter', issueFilter);
 
@@ -210,7 +304,10 @@ function AdminDashboardContent() {
     setIsDownloadingAutomation(true);
     try {
       // The Python script saves reports directly to the 'reports' MongoDB collection
-      const response = await fetch('/api/download-automation-report');
+      const urlParams = new URLSearchParams();
+      if (user && user.email) urlParams.append('email', user.email);
+
+      const response = await fetch(`/api/download-automation-report?${urlParams.toString()}`);
       if (!response.ok) {
         throw new Error('Failed to fetch automation report. It might not exist yet.');
       }
@@ -243,7 +340,11 @@ function AdminDashboardContent() {
   const handleSyncCloudflare = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch('/api/sync-cloudflare', { method: 'POST' });
+      const response = await fetch('/api/sync-cloudflare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user?.email })
+      });
       const data = await response.json();
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Failed to sync');
@@ -265,13 +366,17 @@ function AdminDashboardContent() {
   };
 
   if (user === undefined) return <div className="min-h-screen bg-[#09090b]"></div>;
-  if (!user || (user.email && !ADMIN_EMAILS.includes(user.email))) return null;
+  if (!user || !isUserAdmin) return null;
 
   return (
     <div className="min-h-screen bg-[#09090b] text-white selection:bg-emerald-500/30 font-sans">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-6 md:px-[3rem] xl:px-6 pt-28 pb-24 space-y-8">
+      <main className="w-[calc(100%-3rem)] max-w-7xl mx-auto px-6 pt-28 pb-24 space-y-8 relative z-10">
+        <style>{`
+          .custom-email-link:hover { text-decoration: underline !important; text-decoration-color: black !important; text-decoration-thickness: 1px !important; color: black !important; border-bottom: none !important; }
+        `}</style>
+
         {/* HEADER SECTION */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in duration-700">
           <div className="flex flex-col gap-2">
@@ -408,30 +513,26 @@ function AdminDashboardContent() {
 
         {/* TAB 2: CLOUDFLARE FLEET */}
         {activeTab === 'fleet' && (
-          <div className="bg-white rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-500">
+          <div className="bg-white rounded-xl shadow-xl overflow-hidden relative z-0">
             {/* Table Header Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border-b border-gray-200 bg-gray-50/50 gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border-b border-gray-200 bg-gray-50/50 gap-4 relative z-20">
               <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <div className="relative w-full sm:w-80 flex items-center">
+                  <div className="absolute left-3 inset-y-0 pointer-events-none z-10 flex items-center justify-center">
+                    <Search className="w-4 h-4 text-gray-400" />
+                  </div>
                   <input
                     type="text"
-                    placeholder="Search among 12k+ domains..."
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setCurrentPage(1); // Reset page on new search
-                    }}
-                    className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow text-gray-900 placeholder:text-gray-400"
+                    placeholder="Search domain"
+                    value={localSearchQuery}
+                    onChange={(e) => setLocalSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow text-gray-900 placeholder:text-gray-400 shadow-sm"
                   />
                 </div>
                 <select
                   value={issueFilter}
-                  onChange={(e) => {
-                    setIssueFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full sm:w-48 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700 cursor-pointer"
+                  onChange={(e) => setIssueFilter(e.target.value)}
+                  className="w-full sm:w-48 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700 cursor-pointer shadow-sm"
                 >
                   <option value="All">All Domains</option>
                   <option value="Clean">✅ Clean</option>
@@ -467,8 +568,12 @@ function AdminDashboardContent() {
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white relative">
                   {isDomainsLoading && (
-                    <tr className="absolute inset-0 bg-white/50 backdrop-blur-sm z-10 flex items-center justify-center">
-                      <td><div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" /></td>
+                    <tr>
+                      <td colSpan={5} className="p-12 text-center bg-white/50 backdrop-blur-sm relative z-10">
+                        <div className="flex justify-center">
+                          <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                        </div>
+                      </td>
                     </tr>
                   )}
                   {domains.length === 0 && !isDomainsLoading ? (
@@ -490,9 +595,11 @@ function AdminDashboardContent() {
                                 {entity.user.charAt(0).toUpperCase()}
                               </div>
                               <a
-                                href={`mailto:${entity.user}?subject=Security Update Required for ${entity.domain}`}
+                                href={getEmailLink(entity)}
+                                target={userSettings.emailClient !== 'default' ? '_blank' : undefined}
+                                rel={userSettings.emailClient !== 'default' ? 'noopener noreferrer' : undefined}
                                 title={`Click to send an email to this owner\n${entity.user}`}
-                                className="inline text-[13px] text-blue-600 font-bold hover:underline hover:text-blue-800 transition-colors cursor-pointer"
+                                className="inline-block text-[13px] text-blue-600 font-bold custom-email-link transition-colors cursor-pointer pb-[1px]"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {entity.user}

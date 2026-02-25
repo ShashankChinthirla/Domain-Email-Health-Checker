@@ -1,10 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+import { isAdmin } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
     try {
+        const payload = await request.json().catch(() => ({}));
+        const email = payload.email;
+
+        if (!(await isAdmin(email))) {
+            return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 });
+        }
+
         const client = await clientPromise;
         const db = client.db('vercel');
         const collection = db.collection('issue_domains');

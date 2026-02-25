@@ -1,12 +1,14 @@
 'use client';
 
-import { Search, Loader2, LogIn, LogOut, User as UserIcon, ChevronDown } from 'lucide-react';
+import { Search, Loader2, LogIn, LogOut, User as UserIcon, ChevronDown, ShieldCheck, Settings, LifeBuoy, ChevronRight } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { auth } from '@/lib/firebase';
 import { User, signOut } from 'firebase/auth';
 import { LoginModal } from '@/components/LoginModal';
 import { cn } from '@/lib/utils';
 import { useOnClickOutside } from '@/lib/hooks';
+import { isAdmin } from '@/lib/roles';
+import { getUserSettings } from '@/app/settings/actions';
 
 interface NavbarProps {
     searchState?: {
@@ -16,10 +18,10 @@ interface NavbarProps {
         loading: boolean;
     };
 }
-const ADMIN_EMAILS = ['shashankshashankc39@gmail.com', 'paybalc06@gmail.com'];
-
 export function Navbar({ searchState }: NavbarProps) {
     const [user, setUser] = useState<User | null>(null);
+    const [isUserAdmin, setIsUserAdmin] = useState(false);
+    const [dbDisplayName, setDbDisplayName] = useState('');
     const [showLogin, setShowLogin] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -27,11 +29,42 @@ export function Navbar({ searchState }: NavbarProps) {
     useOnClickOutside(dropdownRef as React.RefObject<HTMLElement>, () => setShowDropdown(false));
 
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged((u) => {
+        const fetchUserData = async (email: string) => {
+            const adminStatus = await isAdmin(email);
+            setIsUserAdmin(adminStatus);
+
+            // Fetch user settings for display name
+            const res = await getUserSettings(email);
+            if (res.success && res.settings && res.settings.displayName) {
+                setDbDisplayName(res.settings.displayName);
+            } else {
+                setDbDisplayName('');
+            }
+        };
+
+        const unsubscribe = auth.onAuthStateChanged(async (u) => {
             setUser(u);
+            if (u?.email) {
+                await fetchUserData(u.email);
+            } else {
+                setIsUserAdmin(false);
+                setDbDisplayName('');
+            }
         });
-        return () => unsubscribe();
-    }, []);
+
+        // Listen for internal settings updates
+        const handleSettingsUpdate = () => {
+            if (user?.email) {
+                fetchUserData(user.email);
+            }
+        };
+        window.addEventListener('user-settings-updated', handleSettingsUpdate);
+
+        return () => {
+            unsubscribe();
+            window.removeEventListener('user-settings-updated', handleSettingsUpdate);
+        };
+    }, [user]);
 
     const handleLogout = async () => {
         await signOut(auth);
@@ -40,14 +73,15 @@ export function Navbar({ searchState }: NavbarProps) {
 
     return (
         <>
+            <style>{`.custom-dropdown-item:hover { background-color: #2c2c2e !important; }`}</style>
             <nav className={cn(
                 "fixed z-50 transition-all duration-300 border-white/10 backdrop-blur-xl flex justify-center",
                 searchState
                     ? "top-0 left-0 w-full h-16 border-b bg-black/80"
-                    : "top-6 left-6 right-6 md:left-1/2 md:-translate-x-1/2 md:w-[calc(100%-3rem)] md:max-w-7xl h-16 rounded-2xl border bg-black/80 shadow-2xl"
+                    : "top-6 left-1/2 -translate-x-1/2 w-[calc(100%-3rem)] max-w-7xl h-16 rounded-2xl border bg-black/80 shadow-2xl"
             )}>
                 {/* INNER CONSTRAINED CONTAINER MATCHING THE REPORT MAX WIDTH */}
-                <div className="w-full max-w-7xl mx-auto px-6 h-full flex items-center justify-between gap-6">
+                <div className="w-full px-6 h-full flex items-center justify-between gap-6">
 
                     {/* Logo */}
                     <a href="/" className="text-sm font-medium tracking-widest text-white/90 uppercase opacity-80 hover:opacity-100 transition-opacity shrink-0 select-none cursor-pointer flex items-center">
@@ -96,42 +130,73 @@ export function Navbar({ searchState }: NavbarProps) {
                                             {user.photoURL ? (
                                                 <img src={user.photoURL} alt="User" className="w-full h-full rounded-full object-cover" />
                                             ) : (
-                                                (user.displayName?.[0] || user.email?.[0] || 'U').toUpperCase()
+                                                (dbDisplayName?.[0] || user.displayName?.[0] || user.email?.[0] || 'U').toUpperCase()
                                             )}
                                         </div>
                                     </button>
 
                                     {/* Dropdown Menu */}
                                     {showDropdown && (
-                                        <div className="absolute right-0 top-[calc(100%+1rem)] w-56 bg-[#0a0a0c]/98 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_40px_-5px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 origin-top-right ring-1 ring-white/5 z-50">
-
-                                            {/* Top specular highlight */}
-                                            <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
+                                        <div className="absolute right-0 top-[calc(100%+12px)] w-64 bg-[#111111] backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_40px_-5px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 origin-top-right ring-1 ring-white/5 z-50">
 
                                             {/* User Info Header */}
-                                            <div className="p-4 border-b border-white/5 bg-white/[0.02] flex flex-col items-end relative">
-                                                <div className="absolute inset-0 bg-gradient-to-b from-white/[0.04] to-transparent pointer-events-none" />
-                                                <p className="text-[14px] font-bold tracking-wide text-white/95 truncate w-full text-right drop-shadow-md">{user.displayName || 'DomainGuard User'}</p>
-                                                <p className="text-[12px] font-medium text-white/50 truncate mt-0.5 w-full text-right">{user.email}</p>
+                                            <div className="p-4 flex items-center gap-3 relative">
+                                                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-gray-600 to-gray-400 flex items-center justify-center text-white font-bold text-[15px] shadow-inner shrink-0 object-cover overflow-hidden">
+                                                    {user.photoURL ? (
+                                                        <img src={user.photoURL} alt="User" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        (dbDisplayName?.[0] || user.displayName?.[0] || user.email?.[0] || 'U').toUpperCase()
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-col min-w-0">
+                                                    <p className="text-[14px] font-semibold tracking-wide text-white/95 truncate w-full">{dbDisplayName || user.displayName || 'DomainGuard User'}</p>
+                                                    <p className="text-[12px] text-white/50 truncate mt-0.5 w-full">@{user.email?.split('@')[0] || 'user'}</p>
+                                                </div>
                                             </div>
 
+                                            <div className="h-[1px] w-[calc(100%-24px)] mx-auto bg-white/10" />
+
                                             {/* Actions */}
-                                            <div className="p-1.5 space-y-1 bg-black/20">
-                                                {user.email && ADMIN_EMAILS.includes(user.email) && (
+                                            <div className="p-2 space-y-0.5">
+                                                {isUserAdmin && (
                                                     <a
                                                         href="/admin"
-                                                        className="w-full flex items-center justify-end gap-3 px-3 py-2 text-[13px] font-medium text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-all cursor-pointer group"
+                                                        className="w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium text-white/80 hover:text-white custom-dropdown-item rounded-lg transition-all cursor-pointer group"
                                                     >
+                                                        <ShieldCheck size={16} className="text-white/50 group-hover:text-white" />
                                                         Admin Dashboard
                                                     </a>
                                                 )}
 
+                                                <a
+                                                    href="/settings"
+                                                    className="w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium text-white/80 hover:text-white custom-dropdown-item rounded-lg transition-all cursor-pointer group"
+                                                >
+                                                    <Settings size={16} className="text-white/50 group-hover:text-white" />
+                                                    Settings
+                                                </a>
+                                            </div>
+
+                                            <div className="h-[1px] w-[calc(100%-24px)] mx-auto bg-white/10" />
+
+                                            <div className="p-2">
+                                                <a
+                                                    href="mailto:support@domainguard.com"
+                                                    className="w-full flex items-center justify-between px-3 py-2 text-[14px] font-medium text-white/80 hover:text-white custom-dropdown-item rounded-lg transition-all cursor-pointer group"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <LifeBuoy size={16} className="text-white/50 group-hover:text-white" />
+                                                        Help
+                                                    </div>
+                                                    <ChevronRight size={14} className="text-white/30" />
+                                                </a>
+
                                                 <button
                                                     onClick={handleLogout}
-                                                    className="w-full flex items-center justify-end gap-3 px-3 py-2 text-[13px] font-medium text-white/70 hover:text-white hover:bg-white/5 rounded-lg transition-all cursor-pointer group"
+                                                    className="w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium text-white/80 hover:text-white custom-dropdown-item rounded-lg transition-all cursor-pointer group mt-0.5"
                                                 >
-                                                    Disconnect Session
-                                                    <LogOut size={16} className="text-white/40 group-hover:text-white/80 transition-colors" />
+                                                    <LogOut size={16} className="text-white/50 group-hover:text-white" />
+                                                    Log out
                                                 </button>
                                             </div>
                                         </div>

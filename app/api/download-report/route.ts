@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import * as xlsx from 'xlsx';
+import { isAdmin } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams;
+        const email = searchParams.get('email');
+
+        if (!(await isAdmin(email))) {
+            return new NextResponse('Unauthorized access', { status: 403 });
+        }
+
         const issueFilter = searchParams.get('filter') || 'All';
         const query = searchParams.get('query') || '';
 
