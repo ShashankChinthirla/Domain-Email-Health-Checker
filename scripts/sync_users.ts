@@ -27,33 +27,41 @@ async function syncUsers() {
         let updatedCount = 0;
         const bulkOps: any[] = [];
 
-        // Build a massive lookup map for O(1) matching
-        const mappedUsersByDomain = new Map<string, string>();
+        // Build a massive lookup map for O(1) matching. Store the whole document payload for rich syncing.
+        const mappedDataByDomain = new Map<string, any>();
 
         for (const setup of allSetups) {
             if (!setup.domain) continue;
-
             const domain = setup.domain.toLowerCase().trim();
+
+            let bestUser = null;
 
             // Priority 1: Direct user email field
             if (setup.user && typeof setup.user === 'string' && setup.user.includes('@')) {
-                mappedUsersByDomain.set(domain, setup.user);
-                continue;
-            }
-
-            // Priority 2: Fallback to first contactDetails email
-            if (setup.contactDetails && Array.isArray(setup.contactDetails) && setup.contactDetails.length > 0) {
+                bestUser = setup.user;
+            } else if (setup.contactDetails && Array.isArray(setup.contactDetails) && setup.contactDetails.length > 0) {
+                // Priority 2: Fallback to first contactDetails email
                 const firstContact = setup.contactDetails[0];
                 if (firstContact && firstContact.email) {
-                    mappedUsersByDomain.set(domain, firstContact.email);
+                    bestUser = firstContact.email;
                 }
             }
+
+            // Store the rich payload mapped to the domain
+            mappedDataByDomain.set(domain, {
+                user: bestUser,
+                contactDetails: setup.contactDetails || [],
+                purchaseTxnId: setup.purchaseTxnId || null,
+                startDate: setup.startDate || null,
+                endDate: setup.endDate || null,
+                forwardDomain: setup.forwardDomain || null
+            });
         }
 
-        console.log(`Successfully extracted ${mappedUsersByDomain.size} distinct user mappings. Propagating to issue_domains...`);
+        console.log(`Successfully extracted ${mappedDataByDomain.size} distinct domain payloads. Propagating to issue_domains...`);
 
         // Now we fetch all issue_domains that MATCH these domains and need an update
-        const domainsToUpdate = Array.from(mappedUsersByDomain.keys());
+        const domainsToUpdate = Array.from(mappedDataByDomain.keys());
 
         const existingIssueDomains = await issueCollection.find({
             domain: { $in: domainsToUpdate }
@@ -61,16 +69,31 @@ async function syncUsers() {
 
         for (const issueDoc of existingIssueDomains) {
             const domain = issueDoc.domain.toLowerCase();
-            const correctUser = mappedUsersByDomain.get(domain);
+            const richData = mappedDataByDomain.get(domain);
 
-            // Only update if it's different or missing to save DB writes
-            if (correctUser && issueDoc.user !== correctUser) {
-                bulkOps.push({
-                    updateOne: {
-                        filter: { _id: issueDoc._id },
-                        update: { $set: { user: correctUser } }
-                    }
-                });
+            if (richData) {
+                // We always explicitly push the most up-to-date rich data from dfyinfrasetups.
+                // It's a chron job, so overwriting ensures dates/contacts never drift out of sync.
+                const updatePayload: any = {
+                    updatedAt: new Date()
+                };
+
+                if (richData.user) updatePayload.user = richData.user;
+                if (richData.contactDetails.length > 0) updatePayload.contactDetails = richData.contactDetails;
+                if (richData.purchaseTxnId) updatePayload.purchaseTxnId = richData.purchaseTxnId;
+                if (richData.startDate) updatePayload.startDate = richData.startDate;
+                if (richData.endDate) updatePayload.endDate = richData.endDate;
+                if (richData.forwardDomain) updatePayload.forwardDomain = richData.forwardDomain;
+
+                // Only append to bulk Ops if there's actual new stuff to write
+                if (Object.keys(updatePayload).length > 1) { // >1 because updatedAt is always there
+                    bulkOps.push({
+                        updateOne: {
+                            filter: { _id: issueDoc._id },
+                            update: { $set: updatePayload }
+                        }
+                    });
+                }
             }
         }
 
