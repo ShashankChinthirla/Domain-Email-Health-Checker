@@ -137,7 +137,7 @@ export function Navbar({ searchState }: NavbarProps) {
 
                                     {/* Dropdown Menu */}
                                     {showDropdown && (
-                                        <div className="absolute right-0 top-[calc(100%+12px)] w-64 bg-[#111111] backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_40px_-5px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 origin-top-right ring-1 ring-white/5 z-50">
+                                        <div className="absolute -right-6 top-[calc(100%+20px)] w-64 bg-[#111111] backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_40px_-5px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 origin-top-right ring-1 ring-white/5 z-50">
 
                                             {/* User Info Header */}
                                             <div className="p-4 flex items-center gap-3 relative">
