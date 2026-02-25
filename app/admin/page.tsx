@@ -418,13 +418,13 @@ export default function AdminPage() {
             {/* The Data Table */}
             <div className="overflow-x-auto min-h-[400px]">
               <table className="w-full text-left border-collapse">
-                <thead className="bg-white border-b border-gray-200">
-                  <tr className="text-[12px] text-gray-500 font-semibold tracking-wide">
-                    <th className="p-4 pl-6 font-medium">Domain Name</th>
-                    <th className="p-4 font-medium">Status</th>
-                    <th className="p-4 font-medium">Owner</th>
-                    <th className="p-4 font-medium">Issues Detected</th>
-                    <th className="p-4 font-medium hidden md:table-cell">Last Scanned</th>
+                <thead className="bg-[#fbfeff] border-b border-gray-200">
+                  <tr className="text-[11px] text-gray-500 font-semibold tracking-wider uppercase">
+                    <th className="p-4 pl-6">Domain Name</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4">Owner</th>
+                    <th className="p-4">Issues Detected</th>
+                    <th className="p-4 hidden md:table-cell">Last Scanned</th>
                     <th className="p-4 w-12 text-center"></th>
                   </tr>
                 </thead>
@@ -442,60 +442,61 @@ export default function AdminPage() {
                     </tr>
                   ) : (
                     domains.map((entity) => (
-                      <tr key={entity._id} className="hover:bg-gray-50/80 transition-colors group cursor-pointer" onClick={() => router.push(`/?domain=${entity.domain}`)}>
-                        <td className="p-4 pl-6 text-[14px] font-bold text-blue-600 hover:text-blue-700 hover:underline decoration-blue-300 underline-offset-4">
+                      <tr key={entity._id} className="hover:bg-gray-50/70 transition-colors group cursor-pointer" onClick={() => router.push(`/?domain=${entity.domain}`)}>
+                        <td className="p-4 pl-6 text-[14px] font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
                           {entity.domain}
                         </td>
                         <td className="p-4">
                           {entity.status === 'Secure' ? (
-                            <div className="flex items-center gap-1.5 text-gray-600">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                              <span className="text-[13px] border-b border-gray-300 border-dashed pb-[1px]">Active</span>
-                            </div>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-[12px] font-medium shadow-sm">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Secure
+                            </span>
                           ) : entity.status === 'At Risk' || entity.issuesDetected > 0 ? (
-                            <div className="flex items-center gap-1.5 text-rose-600">
-                              <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                              <span className="text-[13px] font-medium">At Risk</span>
-                            </div>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-100 text-rose-700 text-[12px] font-medium shadow-sm">
+                              <XCircle className="w-3.5 h-3.5" />
+                              At Risk
+                            </span>
                           ) : (
-                            <div className="flex items-center gap-1.5 text-amber-600">
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                              <span className="text-[13px] font-medium">Warning</span>
-                            </div>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-100 text-amber-700 text-[12px] font-medium shadow-sm">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              Warning
+                            </span>
                           )}
                         </td>
                         <td className="p-4">
                           {entity.user ? (
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[11px] font-bold shadow-sm shrink-0">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-100 to-indigo-50 border border-blue-200/60 text-blue-700 flex items-center justify-center text-[11px] font-bold shadow-sm shrink-0">
                                 {entity.user.charAt(0).toUpperCase()}
                               </div>
                               <a
                                 href={`mailto:${entity.user}?subject=Security Update Required for ${entity.domain}`}
-                                className="text-[13px] text-gray-700 font-semibold hover:text-blue-600 hover:underline transition-colors break-all"
+                                className="text-[13px] text-gray-600 font-medium hover:text-blue-600 hover:underline transition-colors break-all"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {entity.user}
                               </a>
                             </div>
                           ) : (
-                            <span className="text-[12px] text-gray-400 font-medium italic bg-gray-100 px-2 py-0.5 rounded-md">
+                            <span className="text-[12px] text-gray-400 font-medium italic bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-md">
                               Unknown
                             </span>
                           )}
                         </td>
                         <td className="p-4">
-                          <span className={cn(
-                            "text-[13px] font-bold",
-                            entity.issuesDetected > 0 ? "text-rose-600" : "text-gray-400 font-medium"
-                          )}>
-                            {entity.issuesDetected > 0 ? entity.issuesDetected : '0'}
-                          </span>
+                          {entity.issuesDetected > 0 ? (
+                            <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-rose-100/80 text-rose-700 text-[13px] font-bold border border-rose-200/50 shadow-sm">
+                              {entity.issuesDetected}
+                            </span>
+                          ) : (
+                            <span className="text-[13px] text-gray-300 font-bold ml-2">-</span>
+                          )}
                         </td>
-                        <td className="p-4 hidden md:table-cell text-[13px] text-gray-500">
-                          <div className="flex items-center gap-2">
-                            <ActivityIcon className="w-3.5 h-3.5 text-gray-300" />
-                            {entity.timestamp ? new Date(entity.timestamp).toLocaleDateString() : 'Unknown'}
+                        <td className="p-4 hidden md:table-cell">
+                          <div className="flex items-center gap-2 text-[12px] text-gray-500 font-medium">
+                            <ActivityIcon className="w-3.5 h-3.5 text-gray-400" />
+                            {entity.timestamp ? new Date(entity.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown'}
                           </div>
                         </td>
                         <td className="p-4 text-center">
