@@ -16,6 +16,7 @@ export default function SettingsPage() {
     const router = useRouter();
 
     const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+    const [initialSettings, setInitialSettings] = useState<UserSettings | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState({ text: '', isError: false });
@@ -42,6 +43,7 @@ export default function SettingsPage() {
                 const res = await getUserSettings(currentUser.email);
                 if (res.success && res.settings) {
                     setSettings(res.settings);
+                    setInitialSettings(res.settings);
                 }
 
                 if (adminStatus) {
@@ -66,6 +68,7 @@ export default function SettingsPage() {
         const res = await saveUserSettings(user.email, settings);
 
         if (res.success) {
+            setInitialSettings(settings); // Changes are now saved, reset baseline
             setSaveMessage({ text: 'Settings saved successfully!', isError: false });
             // Dispatch event to trigger navbar to update its display name
             window.dispatchEvent(new Event('user-settings-updated'));
@@ -172,6 +175,9 @@ export default function SettingsPage() {
     }
 
     if (!user) return null;
+
+    const hasUnsavedChanges = initialSettings && JSON.stringify(settings) !== JSON.stringify(initialSettings);
+    const showPill = hasUnsavedChanges || isSaving || !!saveMessage.text;
 
     return (
         <div className="min-h-screen bg-[#09090b] text-white selection:bg-blue-500/30 font-sans pb-32">
@@ -414,11 +420,14 @@ export default function SettingsPage() {
             </main>
 
             {/* Floating Action Bar */}
-            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-8 duration-700 pointer-events-none">
+            <div
+                className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${showPill ? "translate-y-0 opacity-100" : "translate-y-16 opacity-0"
+                    }`}
+            >
                 <div className="flex items-center gap-6 bg-[#1a1a1c]/90 backdrop-blur-xl border border-white/10 pl-6 pr-2 py-2 rounded-full shadow-[0_20px_40px_-15px_rgba(0,0,0,0.7)] pointer-events-auto">
                     <div className="flex items-center gap-2 min-w-[200px]">
                         {saveMessage.text ? (
-                            <span className={`text-[13px] font-medium flex items-center gap-1.5 ${saveMessage.isError ? "text-rose-400" : "text-emerald-400"}`}>
+                            <span className={`text-[13px] font-medium flex items-center gap-1.5 ${saveMessage.isError ? "text-rose-400" : "text-blue-400"}`}>
                                 {!saveMessage.isError && <CheckCircle2 className="w-4 h-4" />}
                                 {saveMessage.text}
                             </span>
@@ -437,7 +446,7 @@ export default function SettingsPage() {
 
                     <button
                         onClick={handleSave}
-                        disabled={isSaving}
+                        disabled={isSaving || !hasUnsavedChanges}
                         className="flex items-center gap-2 bg-white text-black px-6 py-2.5 rounded-full font-bold text-[13px] hover:bg-gray-200 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                         {isSaving ? <Loader2 className="w-4 h-4 animate-spin text-black/50" /> : 'Save'}
