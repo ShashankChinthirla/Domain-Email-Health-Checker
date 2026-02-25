@@ -421,8 +421,8 @@ export default function AdminPage() {
                 <thead className="bg-[#fbfeff] border-b border-gray-200">
                   <tr className="text-[11px] text-gray-500 font-semibold tracking-wider uppercase">
                     <th className="p-4 pl-6">Domain Name</th>
-                    <th className="p-4">Status</th>
                     <th className="p-4">Owner</th>
+                    <th className="p-4">Status</th>
                     <th className="p-4">Issues Detected</th>
                     <th className="p-4 hidden md:table-cell">Last Scanned</th>
                     <th className="p-4 w-12 text-center"></th>
@@ -447,6 +447,26 @@ export default function AdminPage() {
                           {entity.domain}
                         </td>
                         <td className="p-4">
+                          {entity.user ? (
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-100 to-indigo-50 border border-blue-200/60 text-blue-700 flex items-center justify-center text-[11px] font-bold shadow-sm shrink-0">
+                                {entity.user.charAt(0).toUpperCase()}
+                              </div>
+                              <a
+                                href={`mailto:${entity.user}?subject=Security Update Required for ${entity.domain}`}
+                                className="text-[13px] text-blue-600 font-semibold underline decoration-blue-300 hover:decoration-blue-600 hover:text-blue-800 transition-colors break-all underline-offset-[3px]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {entity.user}
+                              </a>
+                            </div>
+                          ) : (
+                            <span className="text-[12px] text-gray-400 font-medium italic bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-md">
+                              Unknown
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-4">
                           {entity.status === 'Secure' ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-[12px] font-medium shadow-sm">
                               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -461,26 +481,6 @@ export default function AdminPage() {
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-100 text-amber-700 text-[12px] font-medium shadow-sm">
                               <AlertTriangle className="w-3.5 h-3.5" />
                               Warning
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-4">
-                          {entity.user ? (
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-100 to-indigo-50 border border-blue-200/60 text-blue-700 flex items-center justify-center text-[11px] font-bold shadow-sm shrink-0">
-                                {entity.user.charAt(0).toUpperCase()}
-                              </div>
-                              <a
-                                href={`mailto:${entity.user}?subject=Security Update Required for ${entity.domain}`}
-                                className="text-[13px] text-gray-600 font-medium hover:text-blue-600 hover:underline transition-colors break-all"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {entity.user}
-                              </a>
-                            </div>
-                          ) : (
-                            <span className="text-[12px] text-gray-400 font-medium italic bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-md">
-                              Unknown
                             </span>
                           )}
                         </td>
