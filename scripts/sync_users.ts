@@ -9,14 +9,33 @@ async function syncUsers() {
         const testDb = client.db('test');
 
         const issueCollection = vercelDb.collection('issue_domains');
-        const dfyCollection = testDb.collection('dfyinfrasetups');
 
-        // We only need to sync domains that currently lack a valid mapped 'user'
-        // Or we can just run it globally to ensure it's always up-to-date.
-        // For daily chron performance, let's fetch all active dfyinfrasetups.
+        // Sometimes the production connection string lands on the wrong default DB
+        // We will systematically search 'test', 'vercel', and 'Cluster0' for the setups collection.
+        const dbNamesToTry = ['test', 'vercel', 'Cluster0', client.options?.dbName || 'test'];
 
-        console.log('Fetching active mappings from dfyinfrasetups...');
-        const allSetups = await dfyCollection.find({}).toArray();
+        let dfyCollection = null;
+        let allSetups: any[] = [];
+
+        console.log('Searching for active mappings across databases...');
+        for (const dbName of dbNamesToTry) {
+            try {
+                const targetDb = client.db(dbName);
+                const col = targetDb.collection('dfyinfrasetups');
+                const testDocs = await col.find({}).limit(5).toArray();
+
+                if (testDocs.length > 0) {
+                    console.log(`✅ Located populated dfyinfrasetups collection inside database: [${dbName}]`);
+                    dfyCollection = col;
+                    // Fetch them all now that we found the right DB
+                    allSetups = await dfyCollection.find({}).toArray();
+                    break;
+                }
+            } catch (e) {
+                // Ignore errors from missing DBs
+            }
+        }
+
         console.log(`Found ${allSetups.length} setup documents.`);
 
         if (allSetups.length === 0) {
