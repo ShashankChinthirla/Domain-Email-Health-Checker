@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
 import { ShieldCheck, Activity as ActivityIcon, CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Zap, Globe, Search, ChevronLeft, ChevronRight, MoreVertical, LayoutDashboard, Server, TerminalSquare, RefreshCw } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { cn } from '@/lib/utils';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { getAdminMetrics, getPaginatedDomains } from '@/app/admin/actions';
 
@@ -30,53 +30,61 @@ interface MongoDomain {
 const ADMIN_EMAILS = ['shashankshashankc39@gmail.com', 'paybalc06@gmail.com'];
 
 export default function AdminPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#09090b]"></div>}>
+      <AdminDashboardContent />
+    </Suspense>
+  );
+}
+
+function AdminDashboardContent() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   // TABS
-  const [activeTabState, setActiveTabState] = useState<'overview' | 'fleet' | 'automation'>('overview');
+  const activeTabParam = searchParams.get('tab') as 'overview' | 'fleet' | 'automation' | null;
+  const activeTab = activeTabParam && ['overview', 'fleet', 'automation'].includes(activeTabParam) ? activeTabParam : 'overview';
 
-  useEffect(() => {
-    const handleUrlChange = () => {
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        const tabParam = params.get('tab') as 'overview' | 'fleet' | 'automation' | null;
-        if (tabParam && ['overview', 'fleet', 'automation'].includes(tabParam)) {
-          setActiveTabState(tabParam);
-        } else {
-          setActiveTabState('overview');
-        }
-      }
-    };
-
-    handleUrlChange();
-    window.addEventListener('popstate', handleUrlChange);
-    return () => window.removeEventListener('popstate', handleUrlChange);
-  }, []);
-
-  const setActiveTab = (tab: 'overview' | 'fleet' | 'automation') => {
-    setActiveTabState(tab);
-    if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      url.searchParams.set('tab', tab);
-      window.history.pushState({}, '', url.toString());
-    }
-  };
-
-  const activeTab = activeTabState;
+  // DOMAINS STATE (MongoDB)
+  const searchQuery = searchParams.get('q') || '';
+  const issueFilter = searchParams.get('filter') || 'All';
+  const pageParam = parseInt(searchParams.get('page') || '1', 10);
+  const currentPage = isNaN(pageParam) ? 1 : pageParam;
 
   // METRICS STATE
   const [metrics, setMetrics] = useState({ totalDomains: 0, secureCount: 0, atRiskCount: 0, addedToday: 0 });
 
-  // DOMAINS STATE (MongoDB)
   const [domains, setDomains] = useState<MongoDomain[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [issueFilter, setIssueFilter] = useState('All');
-  const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalDomainsMatching, setTotalDomainsMatching] = useState(0);
   const [isDomainsLoading, setIsDomainsLoading] = useState(true);
   const itemsPerPage = 50;
+
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const updateUrlParams = (updates: Record<string, string | null>) => {
+    const current = new URLSearchParams(Array.from(searchParams.entries()));
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null) {
+        current.delete(key);
+      } else {
+        current.set(key, value);
+      }
+    });
+    const search = current.toString();
+    const queryStr = search ? `?${search}` : '';
+    router.push(`${pathname}${queryStr}`, { scroll: false });
+  };
+
+  const setActiveTab = (tab: 'overview' | 'fleet' | 'automation') => updateUrlParams({ tab });
+  const setSearchQuery = (q: string) => updateUrlParams({ q: q || null, page: null });
+  const setIssueFilter = (f: string | ((prev: string) => string)) => {
+    const newFilter = typeof f === 'function' ? f(issueFilter) : f;
+    updateUrlParams({ filter: newFilter === 'All' ? null : newFilter, page: null });
+  };
+  const setCurrentPage = (p: number) => updateUrlParams({ page: p > 1 ? p.toString() : null });
 
   // LOGS STATE (Firebase)
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -136,7 +144,7 @@ export default function AdminPage() {
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [user, searchQuery, issueFilter, currentPage]);
+  }, [user, searchQuery, issueFilter, currentPage, refreshKey]);
 
   // FETCH LOGS
   useEffect(() => {
@@ -245,8 +253,8 @@ export default function AdminPage() {
 
       // Refresh the current view
       setCurrentPage(1);
-      // A quick toggle of the filter to force a re-fetch of the current view
-      setIssueFilter(prev => prev);
+      // Force a re-fetch manually
+      setRefreshKey(prev => prev + 1);
 
     } catch (error: any) {
       console.error("Sync failed:", error);
@@ -483,7 +491,7 @@ export default function AdminPage() {
                               </div>
                               <a
                                 href={`mailto:${entity.user}?subject=Security Update Required for ${entity.domain}`}
-                                className="text-[13px] text-blue-600 font-bold hover:text-blue-800 hover:underline hover:bg-blue-50 px-1 py-0.5 rounded transition-all break-all underline-offset-4 decoration-blue-400"
+                                className="inline-block text-[13px] text-blue-600 font-bold underline decoration-blue-300 hover:decoration-blue-500 hover:text-blue-800 hover:bg-blue-50 px-1.5 py-0.5 rounded transition-all break-all underline-offset-[3px] relative z-10"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {entity.user}
@@ -549,14 +557,14 @@ export default function AdminPage() {
                 <span>Page {currentPage} of {totalPages}</span>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
                     disabled={currentPage === 1}
                     className="p-1 text-gray-400 hover:text-gray-900 disabled:opacity-30 disabled:hover:text-gray-400 transition-colors cursor-pointer"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    onClick={() => setCurrentPage(Math.min(currentPage + 1, totalPages))}
                     disabled={currentPage === totalPages || totalPages === 0}
                     className="p-1 text-gray-400 hover:text-gray-900 disabled:opacity-30 disabled:hover:text-gray-400 transition-colors cursor-pointer"
                   >

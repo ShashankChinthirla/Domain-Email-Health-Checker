@@ -18,7 +18,7 @@ import { Hero } from './Hero';
 import { LoginModal } from '@/components/LoginModal';
 import { Download, Upload, Search, ShieldCheck, Loader2, ArrowRight, ChevronDown, ChevronUp, CheckCircle2, CircleDashed } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 
 // Defined outside to be stable
 const SCAN_STEPS = [
@@ -71,6 +71,8 @@ export function DomainChecker() {
     }, []);
 
     const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
     const autoDomain = searchParams.get('domain');
 
     useEffect(() => {
@@ -186,6 +188,12 @@ export function DomainChecker() {
 
     const handleManualCheck = async () => {
         if (!domainInput.trim()) return;
+
+        // Sync to URL so Back Navigation natively remembers the scanned domain!
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('domain', domainInput.trim().toLowerCase());
+        router.push(`${pathname}?${params.toString()}`, { scroll: false });
+
         window.scrollTo({ top: 0, behavior: 'instant' });
         setLoading(true);
         setInputError(null);
