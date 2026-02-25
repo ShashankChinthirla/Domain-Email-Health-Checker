@@ -78,21 +78,30 @@ export function DomainChecker() {
     useEffect(() => {
         if (autoDomain && !loading) {
             // Only trigger if we don't already have results FOR THIS EXACT DOMAIN
-            if (!currentSingleResult || currentSingleResult.domain !== autoDomain) {
-                setDomainInput(autoDomain);
-                const timer = setTimeout(() => {
-                    handleAutoCheck(autoDomain);
-                }, 100);
-                return () => clearTimeout(timer);
+            if (!currentSingleResult || currentSingleResult.domain.toLowerCase() !== autoDomain.toLowerCase()) {
+
+                // First, check if we ALREADY fetched this domain recently in this session's history memory
+                const existingResult = results.find(r => r.domain.toLowerCase() === autoDomain.toLowerCase());
+
+                if (existingResult) {
+                    setDomainInput(existingResult.domain);
+                    setCurrentSingleResult(existingResult);
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                } else {
+                    setDomainInput(autoDomain);
+                    const timer = setTimeout(() => {
+                        handleAutoCheck(autoDomain);
+                    }, 100);
+                    return () => clearTimeout(timer);
+                }
             }
         } else if (!autoDomain && currentSingleResult) {
-            // User went back to home page (no domain in URL), clear results
+            // User went back to home page (no domain in URL), clear results but keep history array intact
             setCurrentSingleResult(null);
-            setResults([]);
             setScanIndex(0);
             setDomainInput('');
         }
-    }, [autoDomain, currentSingleResult, loading]);
+    }, [autoDomain, currentSingleResult, loading, results]);
 
     const handleAutoCheck = async (domainToSearch: string) => {
         window.scrollTo({ top: 0, behavior: 'instant' });

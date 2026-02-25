@@ -492,7 +492,7 @@ function AdminDashboardContent() {
                               <a
                                 href={`mailto:${entity.user}?subject=Security Update Required for ${entity.domain}`}
                                 title="Click to send an email to this owner"
-                                className="inline-block text-[13px] text-blue-600 font-bold underline decoration-blue-300 hover:decoration-blue-600 hover:text-blue-900 hover:bg-blue-100 px-2 py-1 rounded-md transition-all break-all underline-offset-[3px] relative z-10 cursor-pointer shadow-sm hover:shadow"
+                                className="block text-[13px] text-blue-600 font-bold hover:underline hover:text-blue-800 transition-colors cursor-pointer truncate max-w-[180px]"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {entity.user}
