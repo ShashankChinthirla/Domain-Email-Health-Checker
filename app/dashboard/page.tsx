@@ -702,40 +702,62 @@ function UserDashboardContent() {
 
         {/* TAB 2: ACTION CENTER */}
         {activeTab === 'actions' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-xl md:text-2xl font-black text-white tracking-widest uppercase mb-4 flex items-center gap-3">
-              <Zap className="w-6 h-6 text-yellow-500" />
-              Action Center
-            </h2>
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="h-px bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent flex-1" />
+              <h2 className="text-xl md:text-2xl font-black text-white tracking-[0.2em] shadow-yellow-500/20 uppercase flex items-center gap-3">
+                <Zap className="w-6 h-6 text-yellow-500 animate-pulse" />
+                <span className="bg-gradient-to-r from-white to-white/50 bg-clip-text text-transparent">Action Center</span>
+              </h2>
+              <div className="h-px bg-gradient-to-r from-yellow-500/50 via-transparent to-transparent flex-1" />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
 
               {/* Sync Card */}
-              <div className="bg-[#141417]/80 backdrop-blur-md border border-white/5 p-6 rounded-3xl shadow-xl flex flex-col justify-between group hover:border-blue-500/20 transition-all">
-                <div className="mb-8">
-                  <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-4 border border-blue-500/20 group-hover:scale-110 transition-transform">
-                    <RefreshCw className="w-6 h-6 text-blue-400" />
+              <div className="group relative bg-[#0a0a0c] border border-white/10 p-6 rounded-none overflow-hidden hover:border-blue-500/50 transition-all duration-300 shadow-[0_0_15px_rgba(0,0,0,0.5)] hover:shadow-[0_0_30px_rgba(59,130,246,0.15)] flex flex-col justify-between h-[280px]">
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:20px_20px] opacity-20 group-hover:opacity-40 transition-opacity" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl group-hover:bg-blue-500/20 transition-all" />
+
+                <div className="relative z-10 mb-8 mt-2">
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="w-12 h-12 bg-blue-500/10 rounded-sm flex items-center justify-center border border-blue-500/30 group-hover:scale-110 transition-transform shadow-[0_0_10px_rgba(59,130,246,0.2)]">
+                      <RefreshCw className="w-5 h-5 text-blue-400 group-hover:animate-spin" />
+                    </div>
+                    <div className="px-2 py-1 bg-blue-500/10 text-blue-400 text-[10px] font-mono tracking-widest border border-blue-500/20 rounded-sm">
+                      NET_SYNC
+                    </div>
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-2">Sync Cloudflare</h3>
-                  <p className="text-white/40 text-[13px] leading-relaxed">Pull the latest domains from all connected integrations. Queues them up for health checks.</p>
+                  <h3 className="text-xl font-bold text-white mb-3 tracking-widest uppercase font-mono group-hover:text-blue-100 transition-colors">Sync_Cloudflare</h3>
+                  <p className="text-blue-200/40 text-[12px] leading-relaxed font-mono">PULL LATEST DOMAINS FROM CONNECTED INTEGRATIONS. QUEUE FOR HEALTH CHECKS.</p>
                 </div>
                 <button
                   onClick={handleSyncCloudflare}
                   disabled={isSyncing}
-                  className="w-full h-12 flex items-center justify-center gap-2 bg-blue-600/20 text-blue-400 font-bold tracking-wider uppercase text-[12px] rounded-xl hover:bg-blue-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                  className="relative z-10 w-full h-12 flex items-center justify-center gap-2 bg-blue-600/10 text-blue-400 font-bold tracking-[0.2em] uppercase text-[11px] rounded-sm border border-blue-500/30 hover:bg-blue-600 hover:text-white transition-all cursor-pointer disabled:opacity-50 group-hover:border-blue-500/60 shadow-[inset_0_0_10px_rgba(59,130,246,0.1)]"
                 >
                   <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
-                  {isSyncing ? 'Syncing...' : 'Sync Now'}
+                  {isSyncing ? 'SYNCING_DATA...' : 'INITIATE_SYNC'}
                 </button>
+                <div className="absolute bottom-0 left-0 h-1 w-0 bg-blue-500 group-hover:w-full transition-all duration-500" />
               </div>
 
               {/* Scan Card */}
-              <div className="bg-[#141417]/80 backdrop-blur-md border border-white/5 p-6 rounded-3xl shadow-xl flex flex-col justify-between group hover:border-yellow-500/20 transition-all">
-                <div className="mb-8">
-                  <div className="w-12 h-12 bg-yellow-500/10 rounded-2xl flex items-center justify-center mb-4 border border-yellow-500/20 group-hover:scale-110 transition-transform">
-                    <Play className="w-6 h-6 text-yellow-500 ml-1" />
+              <div className="group relative bg-[#0a0a0c] border border-white/10 p-6 rounded-none overflow-hidden hover:border-yellow-500/50 transition-all duration-300 shadow-[0_0_15px_rgba(0,0,0,0.5)] hover:shadow-[0_0_30px_rgba(234,179,8,0.15)] flex flex-col justify-between h-[280px]">
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:20px_20px] opacity-20 group-hover:opacity-40 transition-opacity" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/10 blur-3xl group-hover:bg-yellow-500/20 transition-all" />
+
+                <div className="relative z-10 mb-8 mt-2">
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="w-12 h-12 bg-yellow-500/10 rounded-sm flex items-center justify-center border border-yellow-500/30 group-hover:scale-110 transition-transform shadow-[0_0_10px_rgba(234,179,8,0.2)]">
+                      <Play className="w-5 h-5 text-yellow-500 ml-1" />
+                    </div>
+                    <div className="px-2 py-1 bg-yellow-500/10 text-yellow-500 text-[10px] font-mono tracking-widest border border-yellow-500/20 rounded-sm">
+                      {isScanningNew ? <span className="animate-pulse">ACTIVE</span> : "STANDBY"}
+                    </div>
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-2">Hyper-Scan</h3>
-                  <p className="text-white/40 text-[13px] leading-relaxed">Fires the distributed matrix to scan all pending domains in parallel and secure your fleet.</p>
+                  <h3 className="text-xl font-bold text-white mb-3 tracking-widest uppercase font-mono group-hover:text-yellow-100 transition-colors">Hyper-Scan</h3>
+                  <p className="text-yellow-200/40 text-[12px] leading-relaxed font-mono">FIRE DISTRIBUTED MATRIX. SCAN OVER 10,000 DOMAINS IN PARALLEL.</p>
                 </div>
                 <button
                   onClick={() => {
@@ -743,63 +765,82 @@ function UserDashboardContent() {
                     setActiveTab('automation');
                   }}
                   disabled={isScanningNew || metrics.pendingCount === 0 || isSyncing}
-                  className="w-full h-12 flex items-center justify-center gap-2 bg-yellow-500/20 text-yellow-500 font-bold tracking-wider uppercase text-[12px] rounded-xl hover:bg-yellow-500 hover:text-black transition-all cursor-pointer disabled:opacity-50"
+                  className="relative z-10 w-full h-12 flex items-center justify-center gap-2 bg-yellow-600/10 text-yellow-500 font-bold tracking-[0.2em] uppercase text-[11px] rounded-sm border border-yellow-500/30 hover:bg-yellow-500 hover:text-black transition-all cursor-pointer disabled:opacity-50 group-hover:border-yellow-500/60 shadow-[inset_0_0_10px_rgba(234,179,8,0.1)]"
                 >
                   {isScanningNew ? (
                     <>
                       <span className="w-4 h-4 border-2 border-yellow-500/40 border-t-yellow-500 rounded-full animate-spin " />
-                      Scanning...
+                      SCANNING_MATRIX...
                     </>
-                  ) : metrics.pendingCount === 0 ? "Nothing to Scan" : "Scan Pending Domains"}
+                  ) : metrics.pendingCount === 0 ? "SYS_IDLE_NO_TARGETS" : "ENGAGE_PROTOCOLS"}
                 </button>
+                <div className="absolute bottom-0 left-0 h-1 w-0 bg-yellow-500 group-hover:w-full transition-all duration-500" />
               </div>
 
               {/* Fix Bulk Card */}
-              <div className="bg-[#141417]/80 backdrop-blur-md border border-white/5 p-6 rounded-3xl shadow-xl flex flex-col justify-between group hover:border-emerald-500/20 transition-all">
-                <div className="mb-8">
-                  <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-4 border border-emerald-500/20 group-hover:scale-110 transition-transform">
-                    <ShieldCheck className="w-6 h-6 text-emerald-400" />
+              <div className="group relative bg-[#0a0a0c] border border-white/10 p-6 rounded-none overflow-hidden hover:border-emerald-500/50 transition-all duration-300 shadow-[0_0_15px_rgba(0,0,0,0.5)] hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] flex flex-col justify-between h-[280px]">
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:20px_20px] opacity-20 group-hover:opacity-40 transition-opacity" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl group-hover:bg-emerald-500/20 transition-all" />
+
+                <div className="relative z-10 mb-8 mt-2">
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="w-12 h-12 bg-emerald-500/10 rounded-sm flex items-center justify-center border border-emerald-500/30 group-hover:scale-110 transition-transform shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+                      <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div className="px-2 py-1 bg-emerald-500/10 text-emerald-400 text-[10px] font-mono tracking-widest border border-emerald-500/20 rounded-sm">
+                      AUTO_FIX
+                    </div>
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-2">Bulk Fix</h3>
-                  <p className="text-white/40 text-[13px] leading-relaxed">Apply automated DNS remediations for all currently selected domains in the Fleet.</p>
+                  <h3 className="text-xl font-bold text-white mb-3 tracking-widest uppercase font-mono group-hover:text-emerald-100 transition-colors">Bulk_Remediate</h3>
+                  <p className="text-emerald-200/40 text-[12px] leading-relaxed font-mono">APPLY AUTOMATED DNS REMEDIATIONS FOR {selectedDomains.length} SELECTED TARGETS.</p>
                 </div>
                 <button
                   onClick={() => {
                     handleBulkRemediate();
                   }}
                   disabled={isRemediatingBulk || selectedDomains.length === 0}
-                  className="w-full h-12 flex items-center justify-center gap-2 bg-emerald-600/20 text-emerald-400 font-bold tracking-wider uppercase text-[12px] rounded-xl hover:bg-emerald-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                  className="relative z-10 w-full h-12 flex items-center justify-center gap-2 bg-emerald-600/10 text-emerald-400 font-bold tracking-[0.2em] uppercase text-[11px] rounded-sm border border-emerald-500/30 hover:bg-emerald-600 hover:text-white transition-all cursor-pointer disabled:opacity-50 group-hover:border-emerald-500/60 shadow-[inset_0_0_10px_rgba(16,185,129,0.1)]"
                 >
                   {isRemediatingBulk ? (
                     <>
                       <span className="w-4 h-4 border-2 border-emerald-500/40 border-t-emerald-500 rounded-full animate-spin " />
-                      Fixing...
+                      EXECUTING_FIX...
                     </>
-                  ) : `Fix ${selectedDomains.length} Selected`}
+                  ) : `APPLY_FIX [${selectedDomains.length}]`}
                 </button>
+                <div className="absolute bottom-0 left-0 h-1 w-0 bg-emerald-500 group-hover:w-full transition-all duration-500" />
               </div>
 
               {/* Download Report Card */}
-              <div className="bg-[#141417]/80 backdrop-blur-md border border-white/5 p-6 rounded-3xl shadow-xl flex flex-col justify-between group hover:border-white/20 transition-all">
-                <div className="mb-8">
-                  <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-4 border border-white/10 group-hover:scale-110 transition-transform">
-                    <Search className="w-6 h-6 text-white/70" />
+              <div className="group relative bg-[#0a0a0c] border border-white/10 p-6 rounded-none overflow-hidden hover:border-white/50 transition-all duration-300 shadow-[0_0_15px_rgba(0,0,0,0.5)] hover:shadow-[0_0_30px_rgba(255,255,255,0.1)] flex flex-col justify-between h-[280px]">
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:20px_20px] opacity-20 group-hover:opacity-40 transition-opacity" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 blur-3xl group-hover:bg-white/10 transition-all" />
+
+                <div className="relative z-10 mb-8 mt-2">
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="w-12 h-12 bg-white/5 rounded-sm flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform shadow-[0_0_10px_rgba(255,255,255,0.1)]">
+                      <Search className="w-5 h-5 text-white/70" />
+                    </div>
+                    <div className="px-2 py-1 bg-white/5 text-white/60 text-[10px] font-mono tracking-widest border border-white/10 rounded-sm">
+                      EXPORT
+                    </div>
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-2">Full Audit Report</h3>
-                  <p className="text-white/40 text-[13px] leading-relaxed">Download a comprehensive Excel export of all domain states and vulnerabilities.</p>
+                  <h3 className="text-xl font-bold text-white mb-3 tracking-widest uppercase font-mono group-hover:text-white/90 transition-colors">Data_Extraction</h3>
+                  <p className="text-white/40 text-[12px] leading-relaxed font-mono">DOWNLOAD COMPREHENSIVE EXCEL EXPORT OF ALL DOMAIN STATES AND VULNERABILITIES.</p>
                 </div>
                 <button
                   onClick={handleDownloadReport}
                   disabled={isDownloading}
-                  className="w-full h-12 flex items-center justify-center gap-2 bg-white/10 text-white font-bold tracking-wider uppercase text-[12px] rounded-xl hover:bg-white hover:text-black transition-all cursor-pointer disabled:opacity-50"
+                  className="relative z-10 w-full h-12 flex items-center justify-center gap-2 bg-white/5 text-white font-bold tracking-[0.2em] uppercase text-[11px] rounded-sm border border-white/20 hover:bg-white hover:text-black transition-all cursor-pointer disabled:opacity-50 group-hover:border-white/50 shadow-[inset_0_0_10px_rgba(255,255,255,0.05)]"
                 >
                   {isDownloading ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin " />
-                      Generating...
+                      GENERATING...
                     </>
-                  ) : "Download Excel"}
+                  ) : "EXTRACT_DATA_FILE"}
                 </button>
+                <div className="absolute bottom-0 left-0 h-1 w-0 bg-white group-hover:w-full transition-all duration-500" />
               </div>
 
             </div>
