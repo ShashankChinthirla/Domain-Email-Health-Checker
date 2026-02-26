@@ -44,7 +44,8 @@ export async function POST(request: Request) {
 
             if (doc) {
                 // Priority: 'user' field, then first contact email
-                dbEmail = (doc as any).user || (doc as any).contactDetails?.[0]?.email || null;
+                const typedDoc = doc as { user?: string; contactDetails?: { email?: string }[] };
+                dbEmail = typedDoc.user || typedDoc.contactDetails?.[0]?.email || null;
             }
         } catch (mongoError) {
             console.error("MongoDB fetch failed (optional):", mongoError);
@@ -55,8 +56,8 @@ export async function POST(request: Request) {
             dbEmail: dbEmail
         });
 
-    } catch (error: any) {
-        if (error.message === 'Global Timeout' || error.name === 'AbortError') {
+    } catch (error: unknown) {
+        if (error instanceof Error && (error.message === 'Global Timeout' || error.name === 'AbortError')) {
             return NextResponse.json({
                 error: 'Timeout',
                 message: 'The health check exceeded execution limits. Please try again.',

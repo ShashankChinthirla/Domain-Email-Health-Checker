@@ -10,8 +10,8 @@ export async function GET(request: NextRequest) {
         const searchParams = request.nextUrl.searchParams;
         const email = searchParams.get('email');
 
-        if (!(await isAdmin(email))) {
-            return new NextResponse('Unauthorized access', { status: 403 });
+        if (!email) {
+            return new NextResponse('Unauthorized access', { status: 401 });
         }
 
         const issueFilter = searchParams.get('filter') || 'All';
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
         const db = client.db('vercel');
         const collection = db.collection('issue_domains');
 
-        const filter: any = {};
+        const filter: Record<string, unknown> = { ownerUserId: email };
 
         if (query) {
             filter.domain = { $regex: query, $options: 'i' };
@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
                 'SPF Record': '',
                 'DMARC Record': '',
                 'Last Scanned': ''
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
             } as any);
         }
 

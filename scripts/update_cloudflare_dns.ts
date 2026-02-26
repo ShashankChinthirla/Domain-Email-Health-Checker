@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
 import clientPromise from '../lib/mongodb';
+import { decryptApiKey } from '../lib/encryption';
 
 // Types exactly matching the Cloudflare JSON response
 interface CloudflareDNSRecord {
@@ -10,14 +10,13 @@ interface CloudflareDNSRecord {
     zone_id: string;
 }
 
-const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
-
-async function fetchCfApi(endpoint: string, options: any = {}) {
-    if (!CLOUDFLARE_API_TOKEN) throw new Error('CLOUDFLARE_API_TOKEN is missing from environment.');
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchCfApi(endpoint: string, apiToken: string, options: any = {}) {
+    if (!apiToken) throw new Error('API Token is missing.');
     const res = await fetch(`https://api.cloudflare.com/client/v4${endpoint}`, {
         ...options,
         headers: {
-            'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+            'Authorization': `Bearer ${apiToken}`,
             'Content-Type': 'application/json',
             ...(options.headers || {})
         }
@@ -93,6 +92,7 @@ async function updateCloudflareDns() {
         const client = await clientPromise;
         const db = client.db('vercel');
         const collection = db.collection('issue_domains');
+        const integrationsCollection = db.collection('integrations');
 
         // Target domains recently synced from Cloudflare waiting to be processed
         const pendingDocs = await collection.find({ issueCategory: 'Needs_Scan' }).toArray();
@@ -108,9 +108,26 @@ async function updateCloudflareDns() {
             console.log(`\n===========================================`);
             console.log(`🔄 Processing Domain: ${domain}`);
 
+            if (!doc.integrationId) {
+                console.log(`⚠️ Warning: No integrationId found for ${domain}. Skipping.`);
+                continue;
+            }
+
+            const integration = await integrationsCollection.findOne({ id: doc.integrationId });
+            if (!integration || !integration.encryptedApiKey) {
+                console.log(`⚠️ Warning: Integration not found or missing API key for ${domain}. Skipping.`);
+                continue;
+            }
+
+            const apiToken = decryptApiKey(integration.encryptedApiKey);
+            if (!apiToken) {
+                console.log(`⚠️ Warning: Failed to decrypt API key for ${domain}. Skipping.`);
+                continue;
+            }
+
             try {
                 // 1. Resolve Zone ID directly from CF
-                const zoneData = await fetchCfApi(`/zones?name=${domain}`);
+                const zoneData = await fetchCfApi(`/zones?name=${domain}`, apiToken);
                 if (!zoneData.result || zoneData.result.length === 0) {
                     console.log(`⚠️ Warning: Zone ID for ${domain} could not be resolved in Cloudflare. Skipping.`);
                     continue;
@@ -118,7 +135,7 @@ async function updateCloudflareDns() {
                 const zoneId = zoneData.result[0].id;
 
                 // 2. Fetch all TXT records for this zone
-                const dnsData = await fetchCfApi(`/zones/${zoneId}/dns_records?type=TXT`);
+                const dnsData = await fetchCfApi(`/zones/${zoneId}/dns_records?type=TXT`, apiToken);
                 const allTxtRecords: CloudflareDNSRecord[] = dnsData.result;
 
                 const spfRecords = allTxtRecords.filter(r => r.content.includes('v=spf1'));
@@ -138,13 +155,13 @@ async function updateCloudflareDns() {
                     console.log(`📤 Updating SPF: ${rawSpf || 'Missing'} -> ${newSpf}`);
                     if (spfRecords.length > 0) {
                         // Update existing
-                        await fetchCfApi(`/zones/${zoneId}/dns_records/${spfRecords[0].id}`, {
+                        await fetchCfApi(`/zones/${zoneId}/dns_records/${spfRecords[0].id}`, apiToken, {
                             method: 'PUT',
                             body: JSON.stringify({ type: 'TXT', name: domain, content: newSpf, comment: "Auto-secured by Admin Bot" })
                         });
                     } else {
                         // Create new
-                        await fetchCfApi(`/zones/${zoneId}/dns_records`, {
+                        await fetchCfApi(`/zones/${zoneId}/dns_records`, apiToken, {
                             method: 'POST',
                             body: JSON.stringify({ type: 'TXT', name: domain, content: newSpf, comment: "Auto-secured by Admin Bot" })
                         });
@@ -160,13 +177,13 @@ async function updateCloudflareDns() {
                     const dmarcName = `_dmarc.${domain}`;
                     if (dmarcRecords.length > 0) {
                         // Update existing
-                        await fetchCfApi(`/zones/${zoneId}/dns_records/${dmarcRecords[0].id}`, {
+                        await fetchCfApi(`/zones/${zoneId}/dns_records/${dmarcRecords[0].id}`, apiToken, {
                             method: 'PUT',
                             body: JSON.stringify({ type: 'TXT', name: dmarcName, content: newDmarc, comment: "Auto-secured by Admin Bot" })
                         });
                     } else {
                         // Create new
-                        await fetchCfApi(`/zones/${zoneId}/dns_records`, {
+                        await fetchCfApi(`/zones/${zoneId}/dns_records`, apiToken, {
                             method: 'POST',
                             body: JSON.stringify({ type: 'TXT', name: dmarcName, content: newDmarc, comment: "Auto-secured by Admin Bot" })
                         });
@@ -191,6 +208,7 @@ async function updateCloudflareDns() {
 
                 console.log(`✅ ${domain} completed.`);
 
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
             } catch (err: any) {
                 console.error(`❌ Non-fatal Error processing ${domain}:`, err.message);
             }

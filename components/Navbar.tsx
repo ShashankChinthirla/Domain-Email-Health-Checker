@@ -158,15 +158,13 @@ export function Navbar({ searchState }: NavbarProps) {
 
                                             {/* Actions */}
                                             <div className="p-2 space-y-0.5">
-                                                {isUserAdmin && (
-                                                    <a
-                                                        href="/admin"
-                                                        className="w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium text-white/80 hover:text-white custom-dropdown-item rounded-lg transition-all cursor-pointer group"
-                                                    >
-                                                        <ShieldCheck size={16} className="text-white/50 group-hover:text-white" />
-                                                        Admin Dashboard
-                                                    </a>
-                                                )}
+                                                <a
+                                                    href="/dashboard"
+                                                    className="w-full flex items-center gap-3 px-3 py-2 text-[14px] font-medium text-white/80 hover:text-white custom-dropdown-item rounded-lg transition-all cursor-pointer group"
+                                                >
+                                                    <ShieldCheck size={16} className="text-white/50 group-hover:text-white" />
+                                                    Dashboard
+                                                </a>
 
                                                 <a
                                                     href="/settings"

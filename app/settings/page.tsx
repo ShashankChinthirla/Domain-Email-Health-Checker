@@ -5,8 +5,9 @@ import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
-import { Save, Mail, User as UserIcon, MessageSquare, Loader2, ArrowLeft, CheckCircle2, Shield, Plus, Trash2, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle2, Shield, Plus, Trash2, X } from 'lucide-react';
 import { getUserSettings, saveUserSettings } from '@/app/settings/actions';
+import { getUserIntegrations, addIntegration, removeIntegration, IntegrationDTO } from '@/app/settings/integrations-actions';
 import { UserSettings, DEFAULT_SETTINGS } from '@/app/settings/types';
 import { isAdmin, getAdmins, addAdmin, removeAdmin, AdminUser } from '@/lib/roles';
 
@@ -26,7 +27,13 @@ export default function SettingsPage() {
     const [newAdminEmails, setNewAdminEmails] = useState<string[]>([]);
     const [adminInputValue, setAdminInputValue] = useState('');
     const [isManagingAdmins, setIsManagingAdmins] = useState(false);
-    const [isAccessMgmtOpen, setIsAccessMgmtOpen] = useState(false);
+    // Removed unused isAccessMgmtOpen
+
+    // Integrations state
+    const [integrations, setIntegrations] = useState<IntegrationDTO[]>([]);
+    const [integrationLabel, setIntegrationLabel] = useState('');
+    const [integrationApiKey, setIntegrationApiKey] = useState('');
+    const [isManagingIntegrations, setIsManagingIntegrations] = useState(false);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -49,6 +56,11 @@ export default function SettingsPage() {
                 if (adminStatus) {
                     const adminsList = await getAdmins();
                     setAdminUsers(adminsList);
+                }
+
+                const intsRes = await getUserIntegrations(currentUser.email);
+                if (intsRes.success && intsRes.integrations) {
+                    setIntegrations(intsRes.integrations);
                 }
             } else {
                 setIsUserAdmin(false);
@@ -87,7 +99,7 @@ export default function SettingsPage() {
     const handleAddAdmin = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
 
-        let emailsToProcess = [...newAdminEmails];
+        const emailsToProcess = [...newAdminEmails];
         // If there's an active typed email not yet tokenized, try to add it
         if (adminInputValue.trim()) {
             const val = adminInputValue.trim().toLowerCase();
@@ -166,6 +178,42 @@ export default function SettingsPage() {
         setTimeout(() => setSaveMessage({ text: '', isError: false }), 3000);
     };
 
+    const handleAddIntegration = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user?.email || !integrationLabel.trim() || !integrationApiKey.trim()) return;
+
+        setIsManagingIntegrations(true);
+        const res = await addIntegration(user.email, 'cloudflare', integrationLabel.trim(), integrationApiKey.trim());
+
+        if (res.success) {
+            setSaveMessage({ text: 'Integration added successfully.', isError: false });
+            setIntegrationLabel('');
+            setIntegrationApiKey('');
+            const intsRes = await getUserIntegrations(user.email);
+            if (intsRes.success && intsRes.integrations) setIntegrations(intsRes.integrations);
+        } else {
+            setSaveMessage({ text: res.error || 'Failed to add integration.', isError: true });
+        }
+        setIsManagingIntegrations(false);
+        setTimeout(() => setSaveMessage({ text: '', isError: false }), 3000);
+    };
+
+    const handleRemoveIntegration = async (id: string, label: string) => {
+        if (!user?.email || !confirm(`Are you sure you want to remove the integration "${label}"?`)) return;
+
+        setIsManagingIntegrations(true);
+        const res = await removeIntegration(user.email, id);
+
+        if (res.success) {
+            setSaveMessage({ text: 'Integration removed.', isError: false });
+            setIntegrations(integrations.filter(i => i.id !== id));
+        } else {
+            setSaveMessage({ text: res.error || 'Failed to remove integration.', isError: true });
+        }
+        setIsManagingIntegrations(false);
+        setTimeout(() => setSaveMessage({ text: '', isError: false }), 3000);
+    };
+
     if (user === undefined || isLoading) {
         return (
             <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
@@ -228,6 +276,100 @@ export default function SettingsPage() {
                                     className="w-full h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white/90 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-colors"
                                     placeholder="e.g. John Doe"
                                 />
+                            </div>
+                        </div>
+                    </section>
+
+                    <div className="w-full h-px bg-white/5" />
+
+                    {/* section: Integrations */}
+                    <section className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6">
+                        <div className="flex flex-col gap-1.5 pt-2">
+                            <h2 className="text-[16px] font-semibold text-white">API Integrations</h2>
+                            <p className="text-[13px] text-white/50 leading-relaxed">Securely connect DNS providers to sync domains and apply automated fixes. Keys are AES-256 encrypted.</p>
+                        </div>
+
+                        <div className="flex flex-col space-y-5">
+                            <form onSubmit={handleAddIntegration} className="flex flex-col gap-3 w-full bg-[#141417] border border-white/10 p-4 rounded-xl">
+                                <h3 className="text-[13px] font-semibold text-white/80">Add New Connection</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[12px] text-white/50">Provider</label>
+                                        <select disabled className="w-full h-9 bg-[#111] border border-white/10 rounded-lg px-2.5 text-[13px] text-white/90 focus:outline-none transition-colors appearance-none cursor-not-allowed">
+                                            <option value="cloudflare">Cloudflare API Token</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[12px] text-white/50">Connection Label</label>
+                                        <input
+                                            type="text"
+                                            value={integrationLabel}
+                                            onChange={(e) => setIntegrationLabel(e.target.value)}
+                                            placeholder="e.g. My Business Cloudflare"
+                                            disabled={isManagingIntegrations}
+                                            required
+                                            className="w-full h-9 bg-[#111] border border-white/10 rounded-lg px-2.5 text-[13px] text-white/90 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-colors"
+                                        />
+                                    </div>
+                                    <div className="space-y-1 sm:col-span-2">
+                                        <label className="text-[12px] text-white/50">API Token</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="password"
+                                                value={integrationApiKey}
+                                                onChange={(e) => setIntegrationApiKey(e.target.value)}
+                                                placeholder="Paste secure API token..."
+                                                disabled={isManagingIntegrations}
+                                                required
+                                                className="flex-1 h-9 bg-[#111] border border-white/10 rounded-lg px-2.5 text-[13px] text-white/90 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-colors"
+                                            />
+                                            <button
+                                                type="submit"
+                                                disabled={isManagingIntegrations || !integrationLabel.trim() || !integrationApiKey.trim()}
+                                                className="h-9 px-4 flex items-center justify-center gap-1.5 bg-white hover:bg-zinc-200 text-black font-semibold text-[13px] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                                            >
+                                                {isManagingIntegrations ? <Loader2 className="w-4 h-4 animate-spin text-black/50" /> : <Plus className="w-4 h-4" />}
+                                                Connect
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+
+                            <div className="flex flex-col gap-2">
+                                {integrations.length === 0 ? (
+                                    <div className="py-6 text-center text-[13px] text-white/30 border border-dashed border-white/10 rounded-xl bg-white/[0.02]">
+                                        No active integrations connected.
+                                    </div>
+                                ) : (
+                                    integrations.map(int => (
+                                        <div key={int.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-gradient-to-r from-blue-500/5 to-transparent border border-blue-500/10 rounded-xl">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-400 shrink-0">
+                                                    <Shield className="w-4 h-4" />
+                                                </div>
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-[14px] font-bold text-white/90 flex items-center gap-2">
+                                                        {int.label}
+                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                            Cloudflare
+                                                        </span>
+                                                    </span>
+                                                    <span className="text-[11px] text-white/40 truncate flex items-center gap-1">
+                                                        Added {new Date(int.createdAt).toLocaleDateString()} &middot; Secured by AES-256
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => handleRemoveIntegration(int.id, int.label)}
+                                                disabled={isManagingIntegrations}
+                                                className="text-[12px] font-medium text-rose-400/70 hover:text-rose-400 hover:bg-rose-400/10 px-3 py-1.5 rounded-lg transition-colors cursor-pointer block text-left"
+                                            >
+                                                Disconnect
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </section>
@@ -361,7 +503,7 @@ export default function SettingsPage() {
                             <section className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6">
                                 <div className="flex flex-col gap-1.5 pt-2">
                                     <h2 className="text-[16px] font-semibold text-white">Email Client Routing</h2>
-                                    <p className="text-[13px] text-white/50 leading-relaxed">Select what app opens when you click a domain owner's email address in the dashboard.</p>
+                                    <p className="text-[13px] text-white/50 leading-relaxed">Select what app opens when you click a domain owner&apos;s email address in the dashboard.</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -374,7 +516,7 @@ export default function SettingsPage() {
                                         return (
                                             <button
                                                 key={option.id}
-                                                onClick={() => setSettings({ ...settings, emailClient: option.id as any })}
+                                                onClick={() => setSettings({ ...settings, emailClient: option.id as 'default' | 'gmail' | 'outlook' })}
                                                 className={`group relative text-left flex flex-col p-4 rounded-xl border transition-all duration-200 outline-none cursor-pointer hover:-translate-y-0.5 ${isActive
                                                     ? 'bg-zinc-800 border-white/20 shadow-md ring-1 ring-white/10'
                                                     : 'bg-[#141417] border-white/10 hover:bg-[#1f1f22] hover:border-white/20 hover:shadow-sm'

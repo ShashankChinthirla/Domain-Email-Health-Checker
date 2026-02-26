@@ -3,51 +3,46 @@
 import clientPromise from '@/lib/mongodb';
 import { isAdmin } from '@/lib/roles';
 
-export async function getAdminMetrics(email: string) {
+export async function getDashboardMetrics(email: string, integrationId?: string) {
     try {
-        if (!(await isAdmin(email))) {
+        if (!email) {
             return { success: false, error: "Unauthorized access" };
         }
 
         const client = await clientPromise;
         const db = client.db();
+
+        const integrationsCount = await db.collection('integrations').countDocuments({ email });
+        if (integrationsCount === 0) {
+            return {
+                totalDomains: 0,
+                secureCount: 0,
+                atRiskCount: 0,
+                addedToday: 0,
+                success: true
+            };
+        }
+
         const collection = db.collection('issue_domains');
 
-        // We need to count distinct domains, because if 2 users track 'example.com', there are 2 documents. 
-        // Admin panel should show truly distinct metrics.
+        const baseFilter: Record<string, unknown> = { ownerUserId: email };
+        if (integrationId && integrationId !== 'All') {
+            baseFilter.integrationId = integrationId;
+        }
 
-        // Aggregate counts using pipelines to group by unique domain name
-        const statusPipeline = await collection.aggregate([
-            {
-                $group: {
-                    _id: "$domain",
-                    isSecure: { $max: { $cond: [{ $eq: ["$status", "Secure"] }, 1, 0] } }
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    totalDomains: { $sum: 1 },
-                    secureCount: { $sum: "$isSecure" }
-                }
-            }
-        ]).toArray();
-
-        const totalDomains = statusPipeline[0]?.totalDomains || 0;
-        const secureCount = statusPipeline[0]?.secureCount || 0;
+        // Aggregate counts
+        const totalDomains = await collection.countDocuments(baseFilter);
+        const secureCount = await collection.countDocuments({ ...baseFilter, status: 'Secure' });
         const atRiskCount = totalDomains - secureCount;
 
-        // Calculate 'Added Today' dynamically (Distinct domains added within 24 hours)
+        // Calculate 'Added Today' dynamically
         const oneDayAgo = new Date();
         oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-        const addedTodayPipeline = await collection.aggregate([
-            { $match: { createdAt: { $gte: oneDayAgo } } },
-            { $group: { _id: "$domain" } },
-            { $count: "uniqueAdded" }
-        ]).toArray();
-
-        const addedToday = addedTodayPipeline[0]?.uniqueAdded || 0;
+        const addedToday = await collection.countDocuments({
+            ...baseFilter,
+            createdAt: { $gte: oneDayAgo }
+        });
 
         return {
             totalDomains,
@@ -62,17 +57,32 @@ export async function getAdminMetrics(email: string) {
     }
 }
 
-export async function getPaginatedDomains(email: string, query = "", issueFilter = "", page = 1, limit = 50) {
+export async function getPaginatedDomains(email: string, query = "", issueFilter = "", integrationId = "All", page = 1, limit = 50) {
     try {
-        if (!(await isAdmin(email))) {
+        if (!email) {
             return { success: false, error: "Unauthorized access" };
         }
 
         const client = await clientPromise;
         const db = client.db();
+
+        const integrationsCount = await db.collection('integrations').countDocuments({ email });
+        if (integrationsCount === 0) {
+            return {
+                success: true,
+                domains: [],
+                totalCount: 0,
+                totalPages: 1
+            };
+        }
+
         const collection = db.collection('issue_domains');
 
-        const filter: any = {};
+        const filter: Record<string, unknown> = { ownerUserId: email };
+
+        if (integrationId && integrationId !== 'All') {
+            filter.integrationId = integrationId;
+        }
 
         if (query) {
             filter.domain = { $regex: query, $options: 'i' };
@@ -117,49 +127,23 @@ export async function getPaginatedDomains(email: string, query = "", issueFilter
                 default:
                     filter.issueCategory = issueFilter;
             }
-        } else {
-            filter.issueCategory = { $ne: 'Needs_Scan' };
         }
 
         const skip = (page - 1) * limit;
 
-        // We need to group by domain so the admin sees distinct domains, not multiple identical rows 
-        // if user A and user B track the same domain.
-        const pipeline: any[] = [
-            { $match: filter },
-            {
-                $group: {
-                    _id: "$domain",
-                    docId: { $first: "$_id" },
-                    status: { $first: "$status" },
-                    issuesDetected: { $max: "$issuesDetected" },
-                    timestamp: { $first: "$timestamp" },
-                    user: { $first: "$user" },
-                    issueCategory: { $first: "$issueCategory" },
-                    issues: { $first: "$issues" }
-                }
-            },
-            { $sort: { _id: 1 } },
-            {
-                $facet: {
-                    metadata: [{ $count: "total" }],
-                    data: [{ $skip: skip }, { $limit: limit }]
-                }
-            }
-        ];
+        const [domains, totalCount] = await Promise.all([
+            collection.find(filter).sort({ domain: 1 }).skip(skip).limit(limit).toArray(),
+            collection.countDocuments(filter)
+        ]);
 
-        const [aggregationResult] = await collection.aggregate(pipeline).toArray();
-        const totalCount = aggregationResult?.metadata?.[0]?.total || 0;
-        const domains = aggregationResult?.data || [];
-
-        // Sanitize for Client Component
-        const sanitizedDomains = domains.map((d: any) => ({
-            _id: d.docId.toString(),
-            domain: d._id || '',
+        // Sanitize for Client Component (Strict pick to avoid Next.js serialization crashes with BSON objects / Stripe data)
+        const sanitizedDomains = domains.map(d => ({
+            _id: d._id.toString(),
+            domain: d.domain || '',
             status: d.status || 'Warning',
             issuesDetected: d.issuesDetected || 0,
-            timestamp: d.timestamp ? new Date(d.timestamp).toISOString() : null,
-            user: typeof d.user === 'string' ? d.user : null,
+            timestamp: d.timestamp ? d.timestamp.toISOString() : null,
+            user: typeof d.ownerUserId === 'string' ? d.ownerUserId : (d.user?.email || null),
             issueCategory: d.issueCategory || null,
             issues: d.issues || {}
         }));

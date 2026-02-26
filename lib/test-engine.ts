@@ -851,9 +851,9 @@ async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Pro
     let anyDomainFail = false;
     domainResults.forEach(res => {
         let status: TestStatus = 'Pass';
-        let severity: 'HIGH' | 'MEDIUM' | 'LOW' = res.list.includes('Spamhaus') ? 'HIGH' : 'MEDIUM';
+        const severity: 'HIGH' | 'MEDIUM' | 'LOW' = res.list.includes('Spamhaus') ? 'HIGH' : 'MEDIUM';
         let reason = res.status === 'PASS' ? `Domain ${domain} is not listed on ${res.list}.` : `Domain ${domain} is listed on ${res.list}.`;
-        let rec = res.status === 'PASS' ? 'No action needed.' : 'Request delisting from this provider.';
+        const rec = res.status === 'PASS' ? 'No action needed.' : 'Request delisting from this provider.';
 
         if (res.status === 'FAIL') {
             status = 'Error';

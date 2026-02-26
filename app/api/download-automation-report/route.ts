@@ -9,8 +9,8 @@ export async function GET(request: NextRequest) {
         const searchParams = request.nextUrl.searchParams;
         const email = searchParams.get('email');
 
-        if (!(await isAdmin(email))) {
-            return new NextResponse('Unauthorized access', { status: 403 });
+        if (!email) {
+            return new NextResponse('Unauthorized access', { status: 401 });
         }
 
         const client = await clientPromise;

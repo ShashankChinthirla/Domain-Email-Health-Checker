@@ -1,6 +1,6 @@
 import React from 'react';
 import { FullHealthReport, CategoryResult } from '@/lib/types';
-import { CheckCircle2, XCircle, AlertTriangle, ArrowRight, ShieldCheck, Download } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, ArrowRight, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
@@ -39,10 +39,6 @@ export function BulkResultsTable({ results, onSelect, user }: BulkResultsTablePr
             const allCats = Object.values(r.categories);
             const errors = allCats.reduce((acc, cat) => acc + cat.stats.errors, 0);
             const warnings = allCats.reduce((acc, cat) => acc + cat.stats.warnings, 0);
-
-            // Re-check clean status for export formatting
-            // NOTE: Using the same logic as filter above (Clean = 0 errors)
-            const isClean = errors === 0;
 
             // Clean Export Mode
             if (filter === 'clean') {
@@ -136,8 +132,7 @@ export function BulkResultsTable({ results, onSelect, user }: BulkResultsTablePr
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(exportData);
 
-        // Auto-width columns based on mode
-        let wscols: any[] = [];
+        let wscols: { wch: number }[] = [];
 
         if (filter === 'clean') {
             wscols = [

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { MongoClient } from 'mongodb';
 import { runFullHealthCheck } from '../lib/test-engine';
 import * as fs from 'fs';
@@ -142,13 +143,18 @@ async function runRescan() {
         const scanAll = process.argv.includes('--all');
         const scanNew = process.argv.includes('--new');
 
-        let query;
+        let query: Record<string, unknown>;
         if (scanNew) {
             query = { issueCategory: 'Needs_Scan' };
         } else if (scanAll) {
             query = { issueCategory: { $ne: 'Needs_Scan' } };
         } else {
             query = { issueCategory: { $nin: ['Clean', 'Needs_Scan'] } };
+        }
+
+        const userArgIndex = process.argv.indexOf('--user');
+        if (userArgIndex !== -1 && process.argv.length > userArgIndex + 1) {
+            query.ownerUserId = process.argv[userArgIndex + 1];
         }
 
         const skipArgIndex = process.argv.indexOf('--skip');

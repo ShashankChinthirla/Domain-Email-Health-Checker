@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+
 import clientPromise from '../lib/mongodb';
 
 async function syncUsers() {
@@ -6,7 +6,6 @@ async function syncUsers() {
     try {
         const client = await clientPromise;
         const vercelDb = client.db('vercel');
-        const testDb = client.db('test');
 
         const issueCollection = vercelDb.collection('issue_domains');
 
@@ -15,6 +14,7 @@ async function syncUsers() {
         const dbNamesToTry = ['test', 'vercel', 'Cluster0', client.options?.dbName || 'test'];
 
         let dfyCollection = null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let allSetups: any[] = [];
 
         console.log('Searching for active mappings across databases...');
@@ -31,7 +31,7 @@ async function syncUsers() {
                     allSetups = await dfyCollection.find({}).toArray();
                     break;
                 }
-            } catch (e) {
+            } catch {
                 // Ignore errors from missing DBs
             }
         }
@@ -44,9 +44,11 @@ async function syncUsers() {
         }
 
         let updatedCount = 0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const bulkOps: any[] = [];
 
         // Build a massive lookup map for O(1) matching. Store the whole document payload for rich syncing.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mappedDataByDomain = new Map<string, any>();
 
         for (const setup of allSetups) {
@@ -91,8 +93,15 @@ async function syncUsers() {
             const richData = mappedDataByDomain.get(domain);
 
             if (richData) {
+                // Guard against multi-tenant leaks. 
+                // Only sync the setup details to the issue_domain if the ownerUserId matches the dfy setup user!
+                if (issueDoc.ownerUserId && richData.user && issueDoc.ownerUserId !== richData.user) {
+                    continue; // Skip this document, it belongs to someone else
+                }
+
                 // We always explicitly push the most up-to-date rich data from dfyinfrasetups.
                 // It's a chron job, so overwriting ensures dates/contacts never drift out of sync.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const updatePayload: any = {
                     updatedAt: new Date()
                 };

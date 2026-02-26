@@ -26,6 +26,7 @@ async function backfillDates() {
 
         // We do this via bulkWrite for optimal performance across 12k records
         const bulkOps = docs.map(doc => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const updateFields: any = {};
 
             // If it lacks createdAt, we assume it's an old legacy domain. 

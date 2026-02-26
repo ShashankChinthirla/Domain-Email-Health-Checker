@@ -24,10 +24,10 @@ export async function POST(request: NextRequest) {
         const collection = db.collection('issue_domains');
 
         // Construct the update document matching the exact schema from Excel
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const updateDoc: any = {
             $set: {
                 domain: body.domain,
-                user: body.user || null,
                 score: body.score !== undefined ? body.score : null,
                 healthStatus: body.healthStatus || null,
                 status: body.status, // "Secure" or "At Risk"
@@ -46,17 +46,17 @@ export async function POST(request: NextRequest) {
             updateDoc.$set.issues = body.issues;
         }
 
-        // Upsert the domain document
-        const result = await collection.updateOne(
+        // We use updateMany because multiple users could be tracking the same domain.
+        // We do NOT upsert here to prevent creating ghost domains missing an ownerUserId.
+        const result = await collection.updateMany(
             { domain: body.domain },
-            updateDoc,
-            { upsert: true }
+            updateDoc
         );
 
         return NextResponse.json({
             success: true,
             message: 'Domain updated successfully',
-            upsertedId: result.upsertedId,
+            matchedCount: result.matchedCount,
             modifiedCount: result.modifiedCount
         }, { status: 200 });
 

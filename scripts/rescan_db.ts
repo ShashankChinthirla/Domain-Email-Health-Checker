@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { MongoClient } from 'mongodb';
 import { runFullHealthCheck } from '../lib/test-engine';
 import * as fs from 'fs';
