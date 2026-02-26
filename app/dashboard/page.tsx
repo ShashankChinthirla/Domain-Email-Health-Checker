@@ -194,7 +194,7 @@ function UserDashboardContent() {
     return () => unsubscribe();
   }, [router]);
 
-  // FETCH METRICS, SETTINGS & INTEGRATIONS
+  // FETCH SETTINGS & INTEGRATIONS
   useEffect(() => {
     if (user) {
       getUserSettings(user.email!).then(res => {
@@ -203,6 +203,12 @@ function UserDashboardContent() {
       getUserIntegrations(user.email!).then(res => {
         if (res.success && res.integrations) setIntegrations(res.integrations);
       });
+    }
+  }, [user]);
+
+  // FETCH METRICS
+  useEffect(() => {
+    if (user) {
       getDashboardMetrics(user.email!, integrationFilter).then(res => {
         if (res.success) {
           setMetrics({
@@ -215,7 +221,7 @@ function UserDashboardContent() {
         }
       });
     }
-  }, [user, integrationFilter]);
+  }, [user, integrationFilter, refreshKey]);
 
   // FETCH DOMAINS
   useEffect(() => {
