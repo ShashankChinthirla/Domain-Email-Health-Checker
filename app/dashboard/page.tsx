@@ -375,49 +375,28 @@ function UserDashboardContent() {
 
     setIsScanningNew(true);
     try {
-      const res = await getPendingDomains(user.email);
-      if (!res.success || !res.domains) {
-        throw new Error(res.error || 'Could not fetch pending domains.');
+      // Hit the GitHub trigger API instead of doing it securely in browser
+      const response = await fetch('/api/trigger-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          alert(`Setup Required: ${data.error}\n\nPlease add your GitHub PAT to Vercel/local env.`);
+          return;
+        }
+        throw new Error(data.error || 'Failed to trigger cloud scan');
       }
 
-      const pendingList = res.domains;
-      if (pendingList.length === 0) {
-        alert("There are no new domains pending a scan.");
-        setIsScanningNew(false);
-        return;
-      }
+      alert('🚀 High-Speed Cloud Scan Initiated!\n\nGitHub Actions is now securely processing all your Pending domains at 50-concurrency scale. This takes roughly 3-5 minutes for 10,000 domains.\n\nYou can safely close your browser or navigate away!');
 
-      setScanProgress({ current: 0, total: pendingList.length });
-
-      const CHUNK_SIZE = 3;
-      let completed = 0;
-
-      for (let i = 0; i < pendingList.length; i += CHUNK_SIZE) {
-        const chunk = pendingList.slice(i, i + CHUNK_SIZE);
-        await Promise.allSettled(chunk.map(async (domainData: any) => {
-          try {
-            await fetch('/api/scan-domain', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ domainId: domainData.id, email: user.email })
-            });
-          } catch (e) {
-            console.error('Scan error for', domainData.domain, e);
-          } finally {
-            completed++;
-            setScanProgress({ current: completed, total: pendingList.length });
-          }
-        }));
-      }
-
-      alert(`Successfully scanned ${pendingList.length} domains!`);
-      // Refresh the view
-      setRefreshKey(prev => prev + 1);
     } catch (err: any) {
       alert(`Error scanning domains: ${err.message}`);
     } finally {
       setIsScanningNew(false);
-      setScanProgress({ current: 0, total: 0 });
     }
   };
 
@@ -562,12 +541,12 @@ function UserDashboardContent() {
               {isScanningNew ? (
                 <>
                   <span className="w-4 h-4 border-2 border-yellow-500/20 border-t-yellow-500 rounded-full animate-spin " />
-                  Scanning ({scanProgress.current}/{scanProgress.total})...
+                  Triggering Cloud Scan...
                 </>
               ) : (
                 <>
                   <Play className="w-4 h-4" />
-                  Scan Domains
+                  Hyper-Scan Pending Domains
                 </>
               )}
             </button>

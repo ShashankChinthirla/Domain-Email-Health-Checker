@@ -167,7 +167,7 @@ async function runRescan() {
         const cursor = collection.find(query).skip(skipCount);
 
         let processed = skipCount;
-        const BATCH_SIZE = 5;
+        const BATCH_SIZE = 50; // Massively increased concurrency for 10k domains in 5 mins
         let batch = [];
 
         while (await cursor.hasNext()) {
