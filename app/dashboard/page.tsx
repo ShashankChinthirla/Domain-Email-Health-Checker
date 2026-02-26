@@ -53,8 +53,8 @@ function UserDashboardContent() {
   const pathname = usePathname();
 
   // TABS
-  const activeTabParam = searchParams.get('tab') as 'overview' | 'fleet' | 'automation' | null;
-  const activeTab = activeTabParam && ['overview', 'fleet', 'automation'].includes(activeTabParam) ? activeTabParam : 'overview';
+  const activeTabParam = searchParams.get('tab') as 'overview' | 'actions' | 'fleet' | 'automation' | null;
+  const activeTab = activeTabParam && ['overview', 'actions', 'fleet', 'automation'].includes(activeTabParam) ? activeTabParam : 'overview';
 
   // DOMAINS STATE (MongoDB)
   const searchQuery = searchParams.get('q') || '';
@@ -156,7 +156,7 @@ function UserDashboardContent() {
     router.push(`${pathname}${queryStr}`, { scroll: false });
   };
 
-  const setActiveTab = (tab: 'overview' | 'fleet' | 'automation') => updateUrlParams({ tab });
+  const setActiveTab = (tab: 'overview' | 'actions' | 'fleet' | 'automation') => updateUrlParams({ tab });
   const setSearchQuery = (q: string) => updateUrlParams({ q: q || null, page: null });
   const setIssueFilter = (f: string | ((prev: string) => string)) => {
     const newFilter = typeof f === 'function' ? f(issueFilter) : f;
@@ -174,6 +174,15 @@ function UserDashboardContent() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localSearchQuery, searchQuery]);
+
+  // AUTO-REFRESH BACKGROUND POLLING
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      setRefreshKey(prev => prev + 1);
+    }, 15000); // 15 seconds
+    return () => clearInterval(interval);
+  }, [user]);
 
   // LOGS STATE (Firebase)
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -229,7 +238,7 @@ function UserDashboardContent() {
 
     let isMounted = true;
     const fetchDomains = async () => {
-      setIsDomainsLoading(true);
+      if (domains.length === 0) setIsDomainsLoading(true);
       const res = await getPaginatedDomains(user.email!, searchQuery, issueFilter, integrationFilter, currentPage, itemsPerPage);
       if (res.success && isMounted) {
         setDomains(res.domains as MongoDomain[]);
@@ -562,83 +571,34 @@ function UserDashboardContent() {
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white/90">Dashboard</h1>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-4 bg-[#141417]/80 backdrop-blur-md border border-white/5 p-1.5 rounded-xl shadow-lg ring-1 ring-white/5">
-            {selectedDomains.length > 0 && activeTab === 'fleet' && (
-              <button
-                onClick={handleBulkRemediate}
-                disabled={isRemediatingBulk}
-                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600/90 text-white font-bold text-[13px] tracking-tight rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_20px_rgba(59,130,246,0.5)] disabled:opacity-50 cursor-pointer"
-              >
-                {isRemediatingBulk ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin " />
-                    Fixing {selectedDomains.length}...
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4" />
-                    Fix {selectedDomains.length} Selected
-                  </>
-                )}
-              </button>
-            )}
-            <button
-              onClick={handleScanNewDomains}
-              disabled={isScanningNew || isSyncing}
-              className="flex items-center gap-2 px-5 py-2.5 bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 font-bold text-[13px] tracking-tight rounded-lg hover:bg-yellow-500/40 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {isScanningNew ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-yellow-500/20 border-t-yellow-500 rounded-full animate-spin " />
-                  Scanning ({scanProgress.current}/{scanProgress.total})...
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4" />
-                  Hyper-Scan Pending Domains
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleSyncCloudflare}
-              disabled={isSyncing}
-              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 font-bold text-[13px] tracking-tight rounded-lg hover:bg-blue-600/40 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
-              {isSyncing ? 'Syncing with CF...' : 'Sync Cloudflare'}
-            </button>
-            <button
-              onClick={handleDownloadReport}
-              disabled={isDownloading}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white text-black font-bold text-[13px] tracking-tight rounded-lg hover:bg-zinc-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {isDownloading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin " />
-                  Generating Secure Link...
-                </>
-              ) : (
-                'Download Full Audit Report'
-              )}
-            </button>
+          <div className="flex flex-col sm:flex-row items-center gap-4 bg-[#141417]/0 p-1.5 rounded-xl">
           </div>
         </div>
 
         {/* TAB NAVIGATION */}
-        <div className="flex items-center gap-2 border-b border-white/10 pb-px">
+        <div className="flex overflow-x-auto items-center gap-2 border-b border-white/10 pb-px mb-6 scrollbar-hide">
           <button
             onClick={() => setActiveTab('overview')}
             className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer",
+              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
               activeTab === 'overview' ? "text-white border-white" : "text-white/40 border-transparent hover:text-white/70"
             )}
           >
             <LayoutDashboard className="w-4 h-4" /> Overview
           </button>
           <button
+            onClick={() => setActiveTab('actions')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
+              activeTab === 'actions' ? "text-yellow-400 border-yellow-400" : "text-white/40 border-transparent hover:text-white/70"
+            )}
+          >
+            <Zap className="w-4 h-4" /> Action Center
+          </button>
+          <button
             onClick={() => setActiveTab('fleet')}
             className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer",
+              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
               activeTab === 'fleet' ? "text-blue-400 border-blue-400" : "text-white/40 border-transparent hover:text-white/70"
             )}
           >
@@ -647,7 +607,7 @@ function UserDashboardContent() {
           <button
             onClick={() => setActiveTab('automation')}
             className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer",
+              "flex items-center gap-2 px-4 py-3 text-sm font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
               activeTab === 'automation' ? "text-emerald-400 border-emerald-400" : "text-white/40 border-transparent hover:text-white/70"
             )}
           >
@@ -740,7 +700,113 @@ function UserDashboardContent() {
           </div>
         )}
 
-        {/* TAB 2: CLOUDFLARE FLEET */}
+        {/* TAB 2: ACTION CENTER */}
+        {activeTab === 'actions' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <h2 className="text-xl md:text-2xl font-black text-white tracking-widest uppercase mb-4 flex items-center gap-3">
+              <Zap className="w-6 h-6 text-yellow-500" />
+              Action Center
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+
+              {/* Sync Card */}
+              <div className="bg-[#141417]/80 backdrop-blur-md border border-white/5 p-6 rounded-3xl shadow-xl flex flex-col justify-between group hover:border-blue-500/20 transition-all">
+                <div className="mb-8">
+                  <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-4 border border-blue-500/20 group-hover:scale-110 transition-transform">
+                    <RefreshCw className="w-6 h-6 text-blue-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Sync Cloudflare</h3>
+                  <p className="text-white/40 text-[13px] leading-relaxed">Pull the latest domains from all connected integrations. Queues them up for health checks.</p>
+                </div>
+                <button
+                  onClick={handleSyncCloudflare}
+                  disabled={isSyncing}
+                  className="w-full h-12 flex items-center justify-center gap-2 bg-blue-600/20 text-blue-400 font-bold tracking-wider uppercase text-[12px] rounded-xl hover:bg-blue-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
+                  {isSyncing ? 'Syncing...' : 'Sync Now'}
+                </button>
+              </div>
+
+              {/* Scan Card */}
+              <div className="bg-[#141417]/80 backdrop-blur-md border border-white/5 p-6 rounded-3xl shadow-xl flex flex-col justify-between group hover:border-yellow-500/20 transition-all">
+                <div className="mb-8">
+                  <div className="w-12 h-12 bg-yellow-500/10 rounded-2xl flex items-center justify-center mb-4 border border-yellow-500/20 group-hover:scale-110 transition-transform">
+                    <Play className="w-6 h-6 text-yellow-500 ml-1" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Hyper-Scan</h3>
+                  <p className="text-white/40 text-[13px] leading-relaxed">Fires the distributed matrix to scan all pending domains in parallel and secure your fleet.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    handleScanNewDomains();
+                    setActiveTab('automation');
+                  }}
+                  disabled={isScanningNew || metrics.pendingCount === 0 || isSyncing}
+                  className="w-full h-12 flex items-center justify-center gap-2 bg-yellow-500/20 text-yellow-500 font-bold tracking-wider uppercase text-[12px] rounded-xl hover:bg-yellow-500 hover:text-black transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isScanningNew ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-yellow-500/40 border-t-yellow-500 rounded-full animate-spin " />
+                      Scanning...
+                    </>
+                  ) : metrics.pendingCount === 0 ? "Nothing to Scan" : "Scan Pending Domains"}
+                </button>
+              </div>
+
+              {/* Fix Bulk Card */}
+              <div className="bg-[#141417]/80 backdrop-blur-md border border-white/5 p-6 rounded-3xl shadow-xl flex flex-col justify-between group hover:border-emerald-500/20 transition-all">
+                <div className="mb-8">
+                  <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-4 border border-emerald-500/20 group-hover:scale-110 transition-transform">
+                    <ShieldCheck className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Bulk Fix</h3>
+                  <p className="text-white/40 text-[13px] leading-relaxed">Apply automated DNS remediations for all currently selected domains in the Fleet.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    handleBulkRemediate();
+                  }}
+                  disabled={isRemediatingBulk || selectedDomains.length === 0}
+                  className="w-full h-12 flex items-center justify-center gap-2 bg-emerald-600/20 text-emerald-400 font-bold tracking-wider uppercase text-[12px] rounded-xl hover:bg-emerald-600 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isRemediatingBulk ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-emerald-500/40 border-t-emerald-500 rounded-full animate-spin " />
+                      Fixing...
+                    </>
+                  ) : `Fix ${selectedDomains.length} Selected`}
+                </button>
+              </div>
+
+              {/* Download Report Card */}
+              <div className="bg-[#141417]/80 backdrop-blur-md border border-white/5 p-6 rounded-3xl shadow-xl flex flex-col justify-between group hover:border-white/20 transition-all">
+                <div className="mb-8">
+                  <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-4 border border-white/10 group-hover:scale-110 transition-transform">
+                    <Search className="w-6 h-6 text-white/70" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Full Audit Report</h3>
+                  <p className="text-white/40 text-[13px] leading-relaxed">Download a comprehensive Excel export of all domain states and vulnerabilities.</p>
+                </div>
+                <button
+                  onClick={handleDownloadReport}
+                  disabled={isDownloading}
+                  className="w-full h-12 flex items-center justify-center gap-2 bg-white/10 text-white font-bold tracking-wider uppercase text-[12px] rounded-xl hover:bg-white hover:text-black transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isDownloading ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin " />
+                      Generating...
+                    </>
+                  ) : "Download Excel"}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: CLOUDFLARE FLEET */}
         {activeTab === 'fleet' && (
           <div className="bg-white rounded-xl shadow-xl overflow-hidden relative z-0">
             {integrations.length === 0 && !isDomainsLoading ? (
@@ -1001,93 +1067,121 @@ function UserDashboardContent() {
           </div>
         )}
 
-        {/* TAB 3: AUTOMATION MONITOR (Logs) */}
+        {/* TAB 4: AUTOMATION MONITOR */}
         {activeTab === 'automation' && (
-          <div className="bg-[#1c1c1e] border border-white/5 rounded-3xl overflow-hidden shadow-2xl relative animate-in fade-in slide-in-from-bottom-6 duration-500">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent" />
-            <div className="p-6 border-b border-white/5 bg-[#252529]/30 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                  <TerminalSquare className="w-5 h-5 text-emerald-400" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold tracking-tight text-white/90">Automation Terminal Feed</h2>
-                  <p className="text-xs text-white/40 mt-0.5">Live execution logs from Python workers</p>
-                </div>
+          <div className="animate-in fade-in slide-in-from-bottom-6 duration-500 space-y-6">
+
+            <div className="bg-[#0a0a0c] border border-white/5 rounded-3xl p-8 relative overflow-hidden shadow-2xl">
+              <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay" />
+              <div className="relative z-10 flex flex-col items-center justify-center text-center py-16">
+                {isScanningNew || metrics.pendingCount > 0 ? (
+                  <>
+                    <div className="relative mb-10">
+                      <div className="absolute inset-0 border border-emerald-500/30 rounded-full animate-ping duration-[3000ms]" />
+                      <div className="w-32 h-32 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin flex items-center justify-center bg-black/50 backdrop-blur-xl shadow-[0_0_50px_rgba(16,185,129,0.1)]">
+                        <TerminalSquare className="w-10 h-10 text-emerald-400" />
+                      </div>
+                    </div>
+                    <h2 className="text-3xl font-black text-emerald-400 tracking-[0.2em] uppercase mb-4 text-shadow-sm shadow-emerald-500/20">Matrix Active</h2>
+                    <p className="text-emerald-500/60 font-mono text-[13px] mb-10 tracking-wider">DISTRIBUTED CLUSTERS ENGAGED • ANALYZING DNS</p>
+
+                    <div className="w-full max-w-lg bg-black/80 border border-white/5 rounded-full h-3 overflow-hidden shadow-inner relative">
+                      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-overlay" />
+                      <div className="h-full bg-emerald-500/80 transition-all duration-700 ease-out shadow-[0_0_20px_rgba(16,185,129,0.5)]" style={{ width: `${scanProgress.total > 0 ? (scanProgress.current / scanProgress.total) * 100 : (metrics.totalDomains > 0 ? ((metrics.totalDomains - metrics.pendingCount) / metrics.totalDomains) * 100 : 0)}%` }} />
+                    </div>
+                    <div className="w-full max-w-lg flex justify-between text-[11px] font-mono tracking-widest uppercase text-emerald-500/40 mt-4">
+                      <span>{scanProgress.total > 0 ? scanProgress.current : Math.max(0, metrics.totalDomains - metrics.pendingCount)} Processed</span>
+                      <span>{scanProgress.total > 0 ? scanProgress.total : metrics.totalDomains} Total</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-32 h-32 border border-white/5 rounded-full flex items-center justify-center mb-10 bg-black/40 shadow-inner">
+                      <TerminalSquare className="w-10 h-10 text-white/10" />
+                    </div>
+                    <h2 className="text-3xl font-black text-white/20 tracking-[0.2em] uppercase mb-4">Matrix Idle</h2>
+                    <p className="text-white/20 font-mono text-[13px] tracking-wider max-w-md mx-auto leading-relaxed">ALL CLUSTERS IN STANDBY. NO PENDING DOMAINS DETECTED IN QUEUE.</p>
+                    <button onClick={() => setActiveTab('actions')} className="mt-8 px-6 py-2 border border-white/10 hover:border-white/20 text-white/40 hover:text-white/80 rounded-full text-xs font-bold tracking-widest uppercase transition-all bg-white/5 cursor-pointer">
+                      Go to Action Center
+                    </button>
+                  </>
+                )}
               </div>
-              <div className="flex items-center gap-4">
+            </div>
+
+            {/* Terminal Feed Layout (Repurposed for minimal vibe) */}
+            <div className="bg-[#0a0a0c] border border-white/5 rounded-3xl overflow-hidden shadow-2xl relative">
+              <div className="p-4 border-b border-white/5 bg-[#141417]/50 flex items-center justify-between">
+                <div className="flex items-center gap-3 px-2">
+                  <div className={cn("w-2 h-2 rounded-full", (isScanningNew || metrics.pendingCount > 0) ? "bg-emerald-500 animate-pulse" : "bg-white/20")} />
+                  <span className="text-[10px] font-mono tracking-widest uppercase text-white/40">Telemetry Stream</span>
+                </div>
                 <button
                   onClick={handleDownloadAutomationReport}
                   disabled={isDownloadingAutomation}
-                  className="flex items-center gap-2 px-4 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold rounded-lg border border-emerald-500/20 transition-colors disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-white/60 text-[10px] font-bold tracking-wider uppercase rounded-lg border border-white/5 transition-colors disabled:opacity-50 cursor-pointer"
                 >
-                  {isDownloadingAutomation ? 'Fetching Latest...' : 'Download Latest Run Report'}
+                  {isDownloadingAutomation ? 'Fetching' : 'Download Log'}
                 </button>
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-black/40 rounded-full border border-white/5">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[10px] font-bold text-emerald-500/80 uppercase tracking-widest">Live Sync</span>
-                </div>
+              </div>
+              <div className="p-0 overflow-y-auto max-h-[400px] scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead className="bg-[#252529] sticky top-0 shadow-md backdrop-blur-md border-b border-white/5 z-10">
+                    <tr className="text-white/40 uppercase tracking-wider text-[10px] font-bold">
+                      <th className="p-4 pl-6 font-medium">Timestamp</th>
+                      <th className="p-4 font-medium">Level</th>
+                      <th className="p-4 font-medium">Module</th>
+                      <th className="p-4 font-medium">Message</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 font-mono">
+                    {logs.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="p-12 text-center text-white/30 text-sm">
+                          Waiting for automation telemetry data...
+                        </td>
+                      </tr>
+                    ) : (
+                      logs.map((log) => {
+                        const date = log.timestamp instanceof Timestamp ? log.timestamp.toDate() : new Date();
+                        return (
+                          <tr key={log.id} className="hover:bg-white/5 transition-colors group">
+                            <td className="p-4 pl-6 text-white/40 text-[12px] whitespace-nowrap">
+                              {date.toLocaleTimeString()} <span className="text-white/20 ml-1">{date.toLocaleDateString()}</span>
+                            </td>
+                            <td className="p-4">
+                              <span className={cn(
+                                "px-2 py-0.5 rounded text-[10px] font-bold tracking-wider",
+                                log.level === 'ERROR' ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" :
+                                  log.level === 'WARNING' ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
+                                    log.level === 'SUCCESS' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                                      "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                              )}>
+                                {log.level}
+                              </span>
+                            </td>
+                            <td className="p-4 text-white/60 text-[12px] whitespace-nowrap">{log.module || 'SYSTEM'}</td>
+                            <td className="p-4 text-white/80 text-[13px] break-words">
+                              <div className="flex items-start gap-2">
+                                {log.level === 'ERROR' && <XCircle className="w-4 h-4 text-rose-500/80 shrink-0 mt-0.5" />}
+                                {log.level === 'WARNING' && <AlertTriangle className="w-4 h-4 text-amber-500/80 shrink-0 mt-0.5" />}
+                                {log.level === 'SUCCESS' && <CheckCircle2 className="w-4 h-4 text-emerald-500/80 shrink-0 mt-0.5" />}
+                                {log.level === 'INFO' && <ActivityIcon className="w-4 h-4 text-blue-500/80 shrink-0 mt-0.5" />}
+                                <span className="leading-snug">{log.message}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
-
-            <div className="p-0 overflow-y-auto max-h-[600px] scrollbar-thin scrollbar-thumb-[#3a3a3e] scrollbar-track-transparent">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead className="bg-[#252529] sticky top-0 shadow-md backdrop-blur-md border-b border-white/5 z-10">
-                  <tr className="text-white/40 uppercase tracking-wider text-[10px] font-bold">
-                    <th className="p-4 pl-6 font-medium">Timestamp</th>
-                    <th className="p-4 font-medium">Level</th>
-                    <th className="p-4 font-medium">Module</th>
-                    <th className="p-4 font-medium">Message</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 font-mono">
-                  {logs.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="p-12 text-center text-white/30 text-sm">
-                        Waiting for automation telemetry data...
-                      </td>
-                    </tr>
-                  ) : (
-                    logs.map((log) => {
-                      const date = log.timestamp instanceof Timestamp ? log.timestamp.toDate() : new Date();
-                      return (
-                        <tr key={log.id} className="hover:bg-white/5 transition-colors group">
-                          <td className="p-4 pl-6 text-white/40 text-[12px] whitespace-nowrap">
-                            {date.toLocaleTimeString()} <span className="text-white/20 ml-1">{date.toLocaleDateString()}</span>
-                          </td>
-                          <td className="p-4">
-                            <span className={cn(
-                              "px-2 py-0.5 rounded text-[10px] font-bold tracking-wider",
-                              log.level === 'ERROR' ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" :
-                                log.level === 'WARNING' ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
-                                  log.level === 'SUCCESS' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                                    "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                            )}>
-                              {log.level}
-                            </span>
-                          </td>
-                          <td className="p-4 text-white/60 text-[12px] whitespace-nowrap">{log.module || 'SYSTEM'}</td>
-                          <td className="p-4 text-white/80 text-[13px] break-words">
-                            <div className="flex items-start gap-2">
-                              {log.level === 'ERROR' && <XCircle className="w-4 h-4 text-rose-500/80 shrink-0 mt-0.5" />}
-                              {log.level === 'WARNING' && <AlertTriangle className="w-4 h-4 text-amber-500/80 shrink-0 mt-0.5" />}
-                              {log.level === 'SUCCESS' && <CheckCircle2 className="w-4 h-4 text-emerald-500/80 shrink-0 mt-0.5" />}
-                              {log.level === 'INFO' && <ActivityIcon className="w-4 h-4 text-blue-500/80 shrink-0 mt-0.5" />}
-                              <span className="leading-snug">{log.message}</span>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
           </div>
-        )
-        }
+        )}
 
-      </main >
-    </div >
+      </main>
+    </div>
   );
 }

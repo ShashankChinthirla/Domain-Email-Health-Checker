@@ -160,19 +160,38 @@ async function runRescan() {
         const skipArgIndex = process.argv.indexOf('--skip');
         const skipCount = skipArgIndex !== -1 ? parseInt(process.argv[skipArgIndex + 1], 10) : 0;
 
+        // NEW: Matrix Sharding (--shard 0/10)
+        let shardIndex = 0;
+        let totalShards = 1;
+        const shardArgIndex = process.argv.indexOf('--shard');
+        if (shardArgIndex !== -1 && process.argv.length > shardArgIndex + 1) {
+            const shardMatch = process.argv[shardArgIndex + 1].match(/^(\d+)\/(\d+)$/);
+            if (shardMatch) {
+                shardIndex = parseInt(shardMatch[1], 10);
+                totalShards = parseInt(shardMatch[2], 10);
+            }
+        }
+
         const totalToScan = await collection.countDocuments(query);
         const scanTypeText = scanNew ? 'NEW DOMAINS ONLY' : (scanAll ? 'ALL DOMAINS' : 'TARGETED FIX');
-        console.log(`\nFound ${totalToScan} domains for evaluation (${scanTypeText}). Skipping first ${skipCount}.\n`);
+        const shardText = totalShards > 1 ? `[SHARD ${shardIndex + 1} OF ${totalShards}]` : '';
+        console.log(`\nFound ${totalToScan} domains for evaluation (${scanTypeText}). ${shardText} Skipping first ${skipCount}.\n`);
 
         const cursor = collection.find(query).skip(skipCount);
 
-        let processed = skipCount;
+        let absoluteIndex = skipCount;
+        let processed = 0;
         const BATCH_SIZE = 100; // Massively increased concurrency for 10k domains in 5 mins
         let batch = [];
 
         while (await cursor.hasNext()) {
             const doc = await cursor.next();
-            batch.push(doc);
+
+            // Mathematical Sharding Filter Route
+            if (absoluteIndex % totalShards === shardIndex) {
+                batch.push(doc);
+            }
+            absoluteIndex++;
 
             if (batch.length >= BATCH_SIZE) {
                 const results = await processBatch(batch, collection);

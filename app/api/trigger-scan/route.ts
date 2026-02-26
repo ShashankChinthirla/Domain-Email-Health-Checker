@@ -1,27 +1,29 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { spawn } from 'child_process';
 
 export async function POST() {
     try {
+        // IF RUNNING LOCALLY, ALWAYS FALLBACK TO TERMINAL SO USER CAN WATCH IT LIVE
+        if (process.env.NODE_ENV === 'development') {
+            console.log("\n🚀 [LOCAL OVERRIDE] Triggering High-Speed Scanner in local terminal...");
+            console.log("------------------------------------------------------------------");
+
+            const child = spawn('npx', ['tsx', 'scripts/rescan_db_v3.ts', '--new'], {
+                shell: true,
+                detached: true,
+                stdio: 'inherit' // This pumps the live logs directly to the VS Code terminal
+            });
+            child.unref();
+
+            return NextResponse.json({
+                success: true,
+                message: 'Running scan locally in your VS Code terminal as requested!'
+            });
+        }
+
         const pat = process.env.GITHUB_PAT;
 
         if (!pat) {
-            // IF RUNNING LOCALLY WITHOUT A PAT, FALLBACK TO TERMINAL
-            if (process.env.NODE_ENV === 'development') {
-                console.log("No GITHUB_PAT found. Falling back to local terminal execution! (WARNING: This will block your PC on 10k domains)");
-
-                // Fire and forget local background execution
-                execAsync('npx tsx scripts/rescan_db_v3.ts --new').catch(e => console.error("Local Scan Error", e));
-
-                return NextResponse.json({
-                    success: true,
-                    message: 'Running scan locally in your terminal since no GitHub token was found.'
-                });
-            }
-
             return NextResponse.json({
                 error: 'GitHub Personal Access Token (GITHUB_PAT) is missing in environment variables. Please add it to your .env.local or Vercel settings.'
             }, { status: 401 });

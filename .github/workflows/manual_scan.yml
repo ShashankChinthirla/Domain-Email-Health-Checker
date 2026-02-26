@@ -6,7 +6,11 @@ on:
 jobs:
   fast-scan:
     runs-on: ubuntu-latest
-    
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -20,9 +24,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Deep DNS Rescan Validation
+      - name: Distributed Shard Scan [${{ matrix.shard_index }}/10]
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
         run: |
-          echo "🔍 Running high-speed deep scan..."
-          npx tsx scripts/rescan_db_v3.ts --new
+          echo "🔍 Booting Distributed Node Shard ${{ matrix.shard_index }}..."
+          npx tsx scripts/rescan_db_v3.ts --new --shard ${{ matrix.shard_index }}/10
