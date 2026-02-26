@@ -98,30 +98,39 @@ export async function getPaginatedDomains(email: string, query = "", issueFilter
                     filter.issueCategory = 'Needs_Scan';
                     break;
                 case 'blacklist_issue':
+                    filter.status = { $ne: 'Secure' };
                     filter.$or = [{ issueCategory: 'blacklist_issue' }, { 'issues.blacklist': { $regex: 'ERROR|WARNING', $options: 'i' } }];
                     break;
                 case 'http_issue':
+                    filter.status = { $ne: 'Secure' };
                     filter.$or = [{ issueCategory: 'http_issue' }, { 'issues.web': { $regex: 'ERROR', $options: 'i' } }];
                     break;
                 case 'No_SPF_AND_DMARC':
+                    filter.status = { $ne: 'Secure' };
                     filter.$or = [{ issueCategory: 'No_SPF_AND_DMARC' }, { $and: [{ 'issues.spf': { $regex: 'No SPF record found', $options: 'i' } }, { 'issues.dmarc': { $regex: 'No DMARC record found', $options: 'i' } }] }];
                     break;
                 case 'No_DMARC_Only':
+                    filter.status = { $ne: 'Secure' };
                     filter.$or = [{ issueCategory: 'No_DMARC_Only' }, { $and: [{ 'issues.dmarc': { $regex: 'No DMARC record found', $options: 'i' } }, { 'issues.spf': { $not: { $regex: 'No SPF record found', $options: 'i' } } }] }];
                     break;
                 case 'No_SPF_Only':
+                    filter.status = { $ne: 'Secure' };
                     filter.$or = [{ issueCategory: 'No_SPF_Only' }, { $and: [{ 'issues.spf': { $regex: 'No SPF record found', $options: 'i' } }, { 'issues.dmarc': { $not: { $regex: 'No DMARC record found', $options: 'i' } } }] }];
                     break;
                 case 'DKIM_Issues':
+                    filter.status = { $ne: 'Secure' };
                     filter.$or = [{ issueCategory: 'DKIM_Issues' }, { 'issues.dkim': { $regex: 'ERROR', $options: 'i' } }];
                     break;
                 case 'Multiple_SPF':
+                    filter.status = { $ne: 'Secure' };
                     filter.$or = [{ issueCategory: 'Multiple_SPF' }, { 'issues.spf': { $regex: 'Multiple', $options: 'i' } }];
                     break;
                 case 'Multiple_DMARC':
+                    filter.status = { $ne: 'Secure' };
                     filter.$or = [{ issueCategory: 'Multiple_DMARC' }, { 'issues.dmarc': { $regex: 'Multiple', $options: 'i' } }];
                     break;
                 case 'DMARC_Policy_None':
+                    filter.status = { $ne: 'Secure' };
                     filter.$or = [{ issueCategory: 'DMARC_Policy_None' }, { 'issues.dmarc': { $regex: 'Policy.*none', $options: 'i' } }];
                     break;
                 default:
@@ -157,5 +166,33 @@ export async function getPaginatedDomains(email: string, query = "", issueFilter
     } catch (error) {
         console.error("Error fetching domains:", error);
         return { success: false, error: "Failed to fetch domains" };
+    }
+}
+
+export async function getPendingDomains(email: string) {
+    try {
+        if (!email) {
+            return { success: false, error: "Unauthorized access" };
+        }
+
+        const client = await clientPromise;
+        const db = client.db();
+        const collection = db.collection('issue_domains');
+
+        const pending = await collection.find(
+            { ownerUserId: email, issueCategory: 'Needs_Scan' },
+            { projection: { _id: 1, domain: 1 } }
+        ).toArray();
+
+        return {
+            success: true,
+            domains: pending.map(d => ({
+                id: d._id.toString(),
+                domain: d.domain
+            }))
+        };
+    } catch (error) {
+        console.error("Error fetching pending domains:", error);
+        return { success: false, error: "Failed to fetch pending domains" };
     }
 }

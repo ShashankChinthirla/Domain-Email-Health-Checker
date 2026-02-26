@@ -3,12 +3,12 @@
 import { useState, useEffect, Suspense } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
-import { ShieldCheck, Activity as ActivityIcon, CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Zap, Globe, Search, ChevronLeft, ChevronRight, MoreVertical, LayoutDashboard, Server, TerminalSquare, RefreshCw } from 'lucide-react';
+import { ShieldCheck, Activity as ActivityIcon, CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Zap, Globe, Search, ChevronLeft, ChevronRight, MoreVertical, LayoutDashboard, Server, TerminalSquare, RefreshCw, Play } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { cn } from '@/lib/utils';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { getDashboardMetrics, getPaginatedDomains } from '@/app/dashboard/actions';
+import { getDashboardMetrics, getPaginatedDomains, getPendingDomains } from '@/app/dashboard/actions';
 import { getUserSettings } from '@/app/settings/actions';
 import { getUserIntegrations, IntegrationDTO } from '@/app/settings/integrations-actions';
 import { UserSettings, DEFAULT_SETTINGS } from '@/app/settings/types';
@@ -237,7 +237,7 @@ function UserDashboardContent() {
       isMounted = false;
       clearTimeout(timer);
     };
-     
+
   }, [user, searchQuery, issueFilter, integrationFilter, currentPage, refreshKey]);
 
   // FETCH LOGS
@@ -259,7 +259,7 @@ function UserDashboardContent() {
     });
 
     return () => unsubscribe();
-     
+
   }, [user]);
 
 
@@ -364,6 +364,60 @@ function UserDashboardContent() {
       alert(error instanceof Error ? error.message : "Failed to sync with Cloudflare.");
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const [isScanningNew, setIsScanningNew] = useState(false);
+  const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
+
+  const handleScanNewDomains = async () => {
+    if (!user?.email) return;
+
+    setIsScanningNew(true);
+    try {
+      const res = await getPendingDomains(user.email);
+      if (!res.success || !res.domains) {
+        throw new Error(res.error || 'Could not fetch pending domains.');
+      }
+
+      const pendingList = res.domains;
+      if (pendingList.length === 0) {
+        alert("There are no new domains pending a scan.");
+        setIsScanningNew(false);
+        return;
+      }
+
+      setScanProgress({ current: 0, total: pendingList.length });
+
+      const CHUNK_SIZE = 3;
+      let completed = 0;
+
+      for (let i = 0; i < pendingList.length; i += CHUNK_SIZE) {
+        const chunk = pendingList.slice(i, i + CHUNK_SIZE);
+        await Promise.allSettled(chunk.map(async (domainData: any) => {
+          try {
+            await fetch('/api/scan-domain', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ domainId: domainData.id, email: user.email })
+            });
+          } catch (e) {
+            console.error('Scan error for', domainData.domain, e);
+          } finally {
+            completed++;
+            setScanProgress({ current: completed, total: pendingList.length });
+          }
+        }));
+      }
+
+      alert(`Successfully scanned ${pendingList.length} domains!`);
+      // Refresh the view
+      setRefreshKey(prev => prev + 1);
+    } catch (err: any) {
+      alert(`Error scanning domains: ${err.message}`);
+    } finally {
+      setIsScanningNew(false);
+      setScanProgress({ current: 0, total: 0 });
     }
   };
 
@@ -500,6 +554,23 @@ function UserDashboardContent() {
                 )}
               </button>
             )}
+            <button
+              onClick={handleScanNewDomains}
+              disabled={isScanningNew || isSyncing}
+              className="flex items-center gap-2 px-5 py-2.5 bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 font-bold text-[13px] tracking-tight rounded-lg hover:bg-yellow-500/40 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {isScanningNew ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-yellow-500/20 border-t-yellow-500 rounded-full animate-spin " />
+                  Scanning ({scanProgress.current}/{scanProgress.total})...
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  Scan Domains
+                </>
+              )}
+            </button>
             <button
               onClick={handleSyncCloudflare}
               disabled={isSyncing}
