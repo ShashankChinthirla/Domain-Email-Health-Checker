@@ -1,0 +1,28 @@
+name: Fast Manual Domain Scan
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fast-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Deep DNS Rescan Validation
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          echo "🔍 Running high-speed deep scan..."
+          npx tsx scripts/rescan_db_v3.ts --new
