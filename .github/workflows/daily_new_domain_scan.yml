@@ -2,7 +2,7 @@ name: Daily Cloudflare Sync & New Domain Scan
 
 on:
   schedule:
-    - cron: '30 4 * * *' # Runs at 04:30 UTC (10:00 AM IST) every day
+    - cron: '0 5 * * *' # Runs at 05:00 UTC (10:30 AM IST) every day
   workflow_dispatch: # Allows manual triggering as well
 
 jobs:
