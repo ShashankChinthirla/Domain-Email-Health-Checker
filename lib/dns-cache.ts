@@ -12,8 +12,8 @@ const cache = new Map<string, CacheEntry<any>>();
 const TTL = 10 * 60 * 1000; // 10 Minutes
 
 // Global DNS Concurrency Control
-// Increased to 128 to prevent queuing delays that cause timeouts on Vercel
-const MAX_CONCURRENT_QUERIES = 128;
+// Increased to 1500 to prevent queuing delays that cause timeouts on massive background bulk scans
+const MAX_CONCURRENT_QUERIES = 1500;
 let runningQueries = 0;
 const queryQueue: ((value: void | PromiseLike<void>) => void)[] = [];
 
