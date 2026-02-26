@@ -18,6 +18,7 @@ export async function getDashboardMetrics(email: string, integrationId?: string)
                 totalDomains: 0,
                 secureCount: 0,
                 atRiskCount: 0,
+                pendingCount: 0,
                 addedToday: 0,
                 success: true
             };
@@ -34,6 +35,7 @@ export async function getDashboardMetrics(email: string, integrationId?: string)
         const totalDomains = await collection.countDocuments(baseFilter);
         const secureCount = await collection.countDocuments({ ...baseFilter, status: 'Secure' });
         const atRiskCount = totalDomains - secureCount;
+        const pendingCount = await collection.countDocuments({ ...baseFilter, issueCategory: 'Needs_Scan' });
 
         // Calculate 'Added Today' dynamically
         const oneDayAgo = new Date();
@@ -48,6 +50,7 @@ export async function getDashboardMetrics(email: string, integrationId?: string)
             totalDomains,
             secureCount,
             atRiskCount,
+            pendingCount,
             addedToday,
             success: true
         };

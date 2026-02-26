@@ -70,7 +70,7 @@ function UserDashboardContent() {
   }, [searchQuery]);
 
   // METRICS STATE
-  const [metrics, setMetrics] = useState({ totalDomains: 0, secureCount: 0, atRiskCount: 0, addedToday: 0 });
+  const [metrics, setMetrics] = useState({ totalDomains: 0, secureCount: 0, atRiskCount: 0, addedToday: 0, pendingCount: 0 });
   const [userSettings, setUserSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [integrations, setIntegrations] = useState<IntegrationDTO[]>([]);
 
@@ -209,7 +209,8 @@ function UserDashboardContent() {
             totalDomains: res.totalDomains!,
             secureCount: res.secureCount!,
             atRiskCount: res.atRiskCount!,
-            addedToday: res.addedToday!
+            addedToday: res.addedToday!,
+            pendingCount: res.pendingCount!
           });
         }
       });
@@ -373,7 +374,14 @@ function UserDashboardContent() {
   const handleScanNewDomains = async () => {
     if (!user?.email) return;
 
+    if (metrics.pendingCount === 0) {
+      alert("No domains are pending a scan right now.");
+      return;
+    }
+
     setIsScanningNew(true);
+    setScanProgress({ current: 0, total: metrics.pendingCount });
+
     try {
       // Hit the GitHub trigger API instead of doing it securely in browser
       const response = await fetch('/api/trigger-scan', {
@@ -384,6 +392,7 @@ function UserDashboardContent() {
       const data = await response.json();
 
       if (!response.ok) {
+        setIsScanningNew(false);
         if (response.status === 401) {
           alert(`Setup Required: ${data.error}\n\nPlease add your GitHub PAT to Vercel/local env.`);
           return;
@@ -391,14 +400,48 @@ function UserDashboardContent() {
         throw new Error(data.error || 'Failed to trigger cloud scan');
       }
 
-      alert('🚀 High-Speed Cloud Scan Initiated!\n\nGitHub Actions is now securely processing all your Pending domains at 50-concurrency scale. This takes roughly 3-5 minutes for 10,000 domains.\n\nYou can safely close your browser or navigate away!');
+      // Do nothing! The useEffect polling hook will now take over and track progress.
 
     } catch (err: any) {
       alert(`Error scanning domains: ${err.message}`);
-    } finally {
       setIsScanningNew(false);
     }
   };
+
+  // POLLING FOR GITHUB ACTION SCAN PROGRESS
+  useEffect(() => {
+    if (!isScanningNew || !user?.email) return;
+
+    const interval = setInterval(() => {
+      getDashboardMetrics(user.email!, integrationFilter).then(res => {
+        if (res.success) {
+          setMetrics(prev => ({
+            ...prev,
+            totalDomains: res.totalDomains!,
+            secureCount: res.secureCount!,
+            atRiskCount: res.atRiskCount!,
+            addedToday: res.addedToday!,
+            pendingCount: res.pendingCount!
+          }));
+
+          setRefreshKey(prev => prev + 1);
+
+          setScanProgress(prev => ({
+            ...prev,
+            current: prev.total - res.pendingCount!
+          }));
+
+          if (res.pendingCount === 0) {
+            setIsScanningNew(false);
+            setScanProgress({ current: 0, total: 0 });
+            alert("✅ Cloud Scan Complete! All domains have been processed.");
+          }
+        }
+      });
+    }, 4000); // Poll every 4 seconds
+
+    return () => clearInterval(interval);
+  }, [isScanningNew, user, integrationFilter]);
 
   const [isRemediating, setIsRemediating] = useState<string | null>(null);
   const [isRemediatingBulk, setIsRemediatingBulk] = useState(false);
@@ -541,7 +584,7 @@ function UserDashboardContent() {
               {isScanningNew ? (
                 <>
                   <span className="w-4 h-4 border-2 border-yellow-500/20 border-t-yellow-500 rounded-full animate-spin " />
-                  Triggering Cloud Scan...
+                  Scanning ({scanProgress.current}/{scanProgress.total})...
                 </>
               ) : (
                 <>
