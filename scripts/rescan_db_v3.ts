@@ -124,57 +124,39 @@ function generateIssuesObject(report: any) {
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
+// Modified to perform a single attempt, handling retries via the main pool
 async function processDomainWithRetry(doc: any, collection: any): Promise<any> {
-    const MAX_RETRIES = 5; // Increased to give Vercel/UDP limits more room to breathe
-    let attempt = 0;
+    try {
+        const report = await runFullHealthCheck(doc.domain);
+        const newCategory = determineIssueCategory(report);
 
-    while (attempt < MAX_RETRIES) {
-        attempt++;
-        try {
-            const report = await runFullHealthCheck(doc.domain);
-            const newCategory = determineIssueCategory(report);
-
-            if (newCategory === 'SYSTEM_TIMEOUT') {
-                console.log(`[TIMEOUT - RETRYING ${attempt}/${MAX_RETRIES}] ${doc.domain}`);
-                if (attempt < MAX_RETRIES) {
-                    const jitter = Math.random() * 5000;
-                    await delay((attempt * 4000) + jitter); // exponential backoff with jitter
-                    continue;
-                } else {
-                    return { success: false, domain: doc.domain, error: 'TIMEOUT_AFTER_RETRIES' };
-                }
-            }
-
-            const newIssuesCount = calculateIssuesCount(report);
-            const newStatus = newCategory === 'Clean' ? 'Secure' : 'At Risk';
-
-            const spfRecord = report.rawSpf || doc.spfFull;
-            const dmarcRecord = report.rawDmarc || doc.dmarcFull;
-
-            await collection.updateOne(
-                { _id: doc._id },
-                {
-                    $set: {
-                        issueCategory: newCategory,
-                        status: newStatus,
-                        issuesDetected: newIssuesCount,
-                        spfFull: spfRecord?.startsWith('v=') ? spfRecord : doc.spfFull,
-                        dmarcFull: dmarcRecord?.startsWith('v=') ? dmarcRecord : doc.dmarcFull,
-                        issues: generateIssuesObject(report)
-                    }
-                }
-            );
-            return { success: true, domain: doc.domain, oldCat: doc.issueCategory, newCat: newCategory };
-
-        } catch (error) {
-            console.error(`[ERROR - RETRYING ${attempt}/${MAX_RETRIES}] ${doc.domain}:`, error);
-            if (attempt < MAX_RETRIES) {
-                const jitter = Math.random() * 5000;
-                await delay((attempt * 4000) + jitter);
-            } else {
-                return { success: false, domain: doc.domain, error };
-            }
+        if (newCategory === 'SYSTEM_TIMEOUT') {
+            return { success: false, retryNeeded: true, domain: doc.domain, error: 'SYSTEM_TIMEOUT' };
         }
+
+        const newIssuesCount = calculateIssuesCount(report);
+        const newStatus = newCategory === 'Clean' ? 'Secure' : 'At Risk';
+
+        const spfRecord = report.rawSpf || doc.spfFull;
+        const dmarcRecord = report.rawDmarc || doc.dmarcFull;
+
+        await collection.updateOne(
+            { _id: doc._id },
+            {
+                $set: {
+                    issueCategory: newCategory,
+                    status: newStatus,
+                    issuesDetected: newIssuesCount,
+                    spfFull: spfRecord?.startsWith('v=') ? spfRecord : doc.spfFull,
+                    dmarcFull: dmarcRecord?.startsWith('v=') ? dmarcRecord : doc.dmarcFull,
+                    issues: generateIssuesObject(report)
+                }
+            }
+        );
+        return { success: true, domain: doc.domain, oldCat: doc.issueCategory, newCat: newCategory };
+
+    } catch (error) {
+        return { success: false, retryNeeded: true, domain: doc.domain, error };
     }
 }
 
@@ -234,58 +216,71 @@ async function runRescan() {
 
         let absoluteIndex = skipCount;
         let processed = 0;
-        const BATCH_SIZE = 10; // Halved to 10 to heavily reduce parallel DNS saturation (300 requests/sec instead of 600)
-        let batch = [];
+        const BATCH_SIZE = 10;
+        let domainPool: any[] = [];
 
+        // Track retry attempts specifically for each domain ID
+        const retryTracker: Record<string, number> = {};
+        const MAX_RETRIES = 5;
+
+        // Pre-load all allowed documents to enable pushing failed domains back onto the array
+        console.log('Loading domains from DB into memory pool...');
         while (await cursor.hasNext()) {
             const doc = await cursor.next();
+            if (!doc) continue;
 
-            // Mathematical Sharding Filter Route
             if (absoluteIndex % totalShards === shardIndex) {
-                batch.push(doc);
+                domainPool.push(doc);
+                retryTracker[doc._id.toString()] = 0;
             }
             absoluteIndex++;
-
-            if (batch.length >= BATCH_SIZE) {
-                const results = await processBatch(batch, collection);
-                processed += batch.length;
-
-                results.forEach((r: any) => {
-                    if (r.success) {
-                        if (r.oldCat !== r.newCat) {
-                            console.log(`[UPDATED] ${r.domain} : ${r.oldCat} -> ${r.newCat}`);
-                        } else {
-                            console.log(`[VERIFIED] ${r.domain} remains ${r.newCat}`);
-                        }
-                    } else if (!r.success && r.error === 'TIMEOUT_AFTER_RETRIES') {
-                        console.log(`[SKIPPED - FAILED AFTER 3 RETRIES] ${r.domain} (Timeout Error)`);
-                    } else {
-                        console.log(`[FAILED] ${r.domain} : ${r.error}`);
-                    }
-                });
-
-                console.log(`Progress: ${processed} / ${totalToScan} (${Math.round((processed / totalToScan) * 100)}%)`);
-                batch = [];
-            }
         }
 
-        if (batch.length > 0) {
+        console.log(`Pool initialized with ${domainPool.length} domains for this shard.`);
+
+        while (domainPool.length > 0) {
+            // Take the next batch
+            const batch = domainPool.splice(0, BATCH_SIZE);
             const results = await processBatch(batch, collection);
-            processed += batch.length;
+
             results.forEach((r: any) => {
+                // Find original doc by domain to ensure perfect matching
+                const originalDoc = batch.find(d => d.domain === r.domain);
+                const docId = originalDoc ? originalDoc._id.toString() : r.domain;
+
                 if (r.success) {
+                    processed++;
                     if (r.oldCat !== r.newCat) {
                         console.log(`[UPDATED] ${r.domain} : ${r.oldCat} -> ${r.newCat}`);
                     } else {
                         console.log(`[VERIFIED] ${r.domain} remains ${r.newCat}`);
                     }
-                } else if (!r.success && r.error === 'TIMEOUT_AFTER_RETRIES') {
-                    console.log(`[SKIPPED - FAILED AFTER 3 RETRIES] ${r.domain} (Timeout Error)`);
+                } else if (r.retryNeeded) {
+                    retryTracker[docId]++;
+                    if (retryTracker[docId] < MAX_RETRIES) {
+                        console.log(`[TIMEOUT - RETRY QUEUED ${retryTracker[docId]}/${MAX_RETRIES}] ${r.domain}`);
+                        // Push to the VERY END of the pool so we keep processing unblocked domains first
+                        if (originalDoc) domainPool.push(originalDoc);
+                    } else {
+                        processed++;
+                        console.log(`[SKIPPED - FAILED AFTER ${MAX_RETRIES} RETRIES] ${r.domain} (Timeout Error)`);
+                    }
                 } else {
+                    processed++;
                     console.log(`[FAILED] ${r.domain} : ${r.error}`);
                 }
             });
-            console.log(`Progress: ${processed} / ${totalToScan} (100%)`);
+
+            // If the pool is getting small and all remaining items are retries, enforce a backoff so we don't rapid-fire the same broken domains
+            if (domainPool.length > 0 && domainPool.length <= BATCH_SIZE) {
+                const jitter = Math.random() * 2000;
+                await delay(3000 + jitter);
+            }
+
+            // Print progress periodically based on processed count vs initial target
+            if (processed % BATCH_SIZE === 0 || domainPool.length === 0) {
+                console.log(`Progress: ${processed} / ${totalToScan} (Active Pool Remaining: ${domainPool.length})`);
+            }
         }
 
         console.log('\n✅ Database Rescan Complete!');
