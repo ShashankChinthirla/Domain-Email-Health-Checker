@@ -1,5 +1,22 @@
 import { promises as dnsPromises, MxRecord, SoaRecord, CaaRecord } from 'dns';
 
+// Force high-capacity public resolvers if we are running locally/in background worker
+// Vercel serverless functions sometimes block outbound port 53 to custom IPs, so we fallback
+// to default system DNS if process.env.VERCEL is present.
+if (!process.env.VERCEL) {
+    try {
+        dnsPromises.setServers([
+            '1.1.1.1', // Cloudflare Primary
+            '8.8.8.8', // Google Primary
+            '1.0.0.1', // Cloudflare Secondary
+            '8.8.4.4'  // Google Secondary
+        ]);
+        console.log('[DNS] Using high-capacity public resolvers (Cloudflare/Google)');
+    } catch (e) {
+        console.warn('[DNS] Failed to set public resolvers, using system defaults', e);
+    }
+}
+
 // Cache structure: Key -> { promise, timestamp, data }
 interface CacheEntry<T> {
     promise: Promise<T>;

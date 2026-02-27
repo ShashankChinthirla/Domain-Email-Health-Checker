@@ -29,53 +29,56 @@ export async function POST(request: NextRequest) {
 
         let totalNewInserted = 0;
         let totalCloudflareDomainsCount = 0;
-        const allNewDomainsAdded = [];
+        const allNewDomainsAdded: string[] = [];
 
-        for (const integration of integrations) {
+        // 1. Process all integrations in parallel
+        await Promise.all(integrations.map(async (integration) => {
             const encryptedKey = integration.encryptedApiKey;
             const apiToken = decryptApiKey(encryptedKey);
 
             if (!apiToken) {
                 console.error(`Failed to decrypt API key for integration ${integration.label}`);
-                continue;
+                return;
             }
 
             const allCloudflareDomains: string[] = [];
-            let page = 1;
-            let hasMore = true;
 
-            // 1. Fetch ALL domains from Cloudflare for this integration
-            while (hasMore) {
-                const res = await fetch(`https://api.cloudflare.com/client/v4/zones?per_page=500&page=${page}`, {
-                    headers: {
-                        'Authorization': `Bearer ${apiToken}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
+            // 1a. Fetch Page 1 to get Total Pages
+            const firstPageRes = await fetch(`https://api.cloudflare.com/client/v4/zones?per_page=500&page=1`, {
+                headers: { 'Authorization': `Bearer ${apiToken}`, 'Content-Type': 'application/json' }
+            });
+            const firstPageData = await firstPageRes.json();
 
-                const data = await res.json();
+            if (!firstPageRes.ok || !firstPageData.success) {
+                console.error("Cloudflare API Error on Page 1:", firstPageData.errors);
+                return;
+            }
 
-                if (!res.ok || !data.success) {
-                    console.error("Cloudflare API Error:", data.errors);
-                    break;
+            allCloudflareDomains.push(...firstPageData.result.map((zone: { name: string }) => zone.name));
+            const totalPages = firstPageData.result_info?.total_pages || 1;
+
+            // 1b. Fetch remaining pages IN PARALLEL
+            if (totalPages > 1) {
+                const pagePromises = [];
+                for (let p = 2; p <= totalPages; p++) {
+                    pagePromises.push(
+                        fetch(`https://api.cloudflare.com/client/v4/zones?per_page=500&page=${p}`, {
+                            headers: { 'Authorization': `Bearer ${apiToken}`, 'Content-Type': 'application/json' }
+                        }).then(r => r.json())
+                    );
                 }
 
-                const domainsOnPage = data.result.map((zone: { name: string }) => zone.name);
-                allCloudflareDomains.push(...domainsOnPage);
-
-                const totalPages = data.result_info?.total_pages || 1;
-                if (page >= totalPages) {
-                    hasMore = false;
-                } else {
-                    page++;
+                const pageResults = await Promise.all(pagePromises);
+                for (const pg of pageResults) {
+                    if (pg.success) {
+                        allCloudflareDomains.push(...pg.result.map((zone: { name: string }) => zone.name));
+                    }
                 }
             }
 
             totalCloudflareDomainsCount += allCloudflareDomains.length;
 
-            if (allCloudflareDomains.length === 0) {
-                continue;
-            }
+            if (allCloudflareDomains.length === 0) return;
 
             // 2. Fetch existing from MongoDB for THIS user
             const existingDocs = await domainsCollection.find(
@@ -85,10 +88,10 @@ export async function POST(request: NextRequest) {
 
             const existingDomainsSet = new Set(existingDocs.map(doc => doc.domain));
 
-            // 3. Find Delta (Domains this user doesn't already have linked)
+            // 3. Find Delta
             const newDomains = allCloudflareDomains.filter(domain => !existingDomainsSet.has(domain));
 
-            // 4. Insert new domains into MongoDB
+            // 4. Insert new domains
             if (newDomains.length > 0) {
                 const docsToInsert = newDomains.map(domain => ({
                     domain: domain,
@@ -105,11 +108,11 @@ export async function POST(request: NextRequest) {
                     createdAt: new Date()
                 }));
 
-                await domainsCollection.insertMany(docsToInsert);
+                await domainsCollection.insertMany(docsToInsert, { ordered: false });
                 totalNewInserted += newDomains.length;
                 allNewDomainsAdded.push(...newDomains);
             }
-        }
+        }));
 
         return NextResponse.json({
             success: true,

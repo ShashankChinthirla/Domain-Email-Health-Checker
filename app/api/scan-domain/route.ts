@@ -4,7 +4,6 @@ import { runFullHealthCheck } from '@/lib/test-engine';
 import { ObjectId } from 'mongodb';
 
 export const dynamic = 'force-dynamic';
-const GLOBAL_TIMEOUT_MS = 9000; // Vercel hobby limit safeguard
 
 // Helpers for Categorization (from rescan_db.ts)
 function determineIssueCategory(report: any): string {
@@ -17,7 +16,13 @@ function determineIssueCategory(report: any): string {
     const dnsTests = categories['dns']?.tests || [];
 
     const coreFailedToLoad = [...dnsTests, ...spfTests, ...dmarcTests, ...dkimTests].some((t: any) =>
-        t.info === 'Timed Out' || t.info === 'Timeout'
+        t.info === 'Timed Out' ||
+        t.info === 'Timeout' ||
+        t.info === 'DNS Error' ||
+        t.info === 'DNS Lookup Failed' ||
+        t.info === 'Failed' ||
+        t.info === 'Unreachable' ||
+        t.info === 'Rate Limited'
     );
     if (coreFailedToLoad) return 'SYSTEM_TIMEOUT';
 
@@ -26,6 +31,10 @@ function determineIssueCategory(report: any): string {
     const multipleSpf = spfTests.some((t: any) => t.name?.includes('Multiple') && t.status === 'Error');
     const multipleDmarc = dmarcTests.some((t: any) => t.name?.includes('Multiple') && t.status === 'Error');
     const dmarcNone = dmarcTests.some((t: any) => t.name?.includes('Policy') && t.info?.toLowerCase().includes('none'));
+
+    const spfGeneralError = spfTests.some((t: any) => t.status === 'Error' && t.info !== 'Missing' && !t.name?.includes('Multiple'));
+    const dmarcGeneralError = dmarcTests.some((t: any) => t.status === 'Error' && t.info !== 'Missing' && !t.name?.includes('Multiple'));
+
     const dkimErrors = dkimTests.filter((t: any) => t.status === 'Error');
 
     if (missingSpf && missingDmarc) return 'No_SPF_AND_DMARC';
@@ -33,31 +42,69 @@ function determineIssueCategory(report: any): string {
     if (missingSpf) return 'No_SPF_Only';
     if (multipleSpf) return 'Multiple_SPF';
     if (multipleDmarc) return 'Multiple_DMARC';
+
+    if (spfGeneralError && dmarcGeneralError) return 'No_SPF_AND_DMARC';
+    if (dmarcGeneralError) return 'No_DMARC_Only';
+    if (spfGeneralError) return 'No_SPF_Only';
+
     if (dkimErrors.length > 0) return 'DKIM_Issues';
     if (dmarcNone) return 'DMARC_Policy_None';
 
-    const blacklistErrors = blacklistTests.filter((t: any) => t.status === 'Error' && t.info !== 'Timed Out');
+    const blacklistErrors = blacklistTests.filter((t: any) => t.status === 'Error' && !t.info?.includes('Timeout') && t.info !== 'Rate Limited');
     if (blacklistErrors.length > 0) return 'blacklist_issue';
 
-    const webErrors = webTests.filter((t: any) => t.status === 'Error' && !t.info?.includes('Timeout'));
+    const webErrors = webTests.filter((t: any) => t.status === 'Error' && !t.info?.includes('Timeout') && t.info !== 'Unreachable');
     if (webErrors.length > 0) return 'http_issue';
 
     return 'Clean';
 }
 
+function generateIssuesObject(report: any) {
+    const issues: any = {};
+    const categories = report.categories || {};
+
+    const hasError = (tests: any[]) => tests?.some(t => t.status === 'Error');
+    const hasWarning = (tests: any[]) => tests?.some(t => t.status === 'Warning');
+
+    if (hasError(categories['spf']?.tests)) issues.spf = "ERROR: See report for details";
+    else if (hasWarning(categories['spf']?.tests)) issues.spf = "WARNING: See report";
+
+    if (hasError(categories['dmarc']?.tests)) issues.dmarc = "ERROR: See report for details";
+    else if (hasWarning(categories['dmarc']?.tests)) issues.dmarc = "WARNING: See report";
+
+    if (hasError(categories['dkim']?.tests)) issues.dkim = "ERROR: See report for details";
+    else if (hasWarning(categories['dkim']?.tests)) issues.dkim = "WARNING: See report";
+
+    if (hasError(categories['blacklist']?.tests)) issues.blacklist = "ERROR: See report for details";
+    else if (hasWarning(categories['blacklist']?.tests)) issues.blacklist = "WARNING: See report";
+
+    if (hasError(categories['webServer']?.tests)) issues.web = "ERROR: See report for details";
+    else if (hasWarning(categories['webServer']?.tests)) issues.web = "WARNING: See report";
+
+    return issues;
+}
+
 function calculateIssuesCount(report: any): number {
     let count = 0;
     if (!report.categories) return count;
+
+    // Ignore all network noise — these are environmental failures, not security issues
+    const ignoredInfos = [
+        'Timed Out', 'Timeout', 'DNS Error', 'DNS Lookup Failed',
+        'Failed', 'Unreachable', 'Rate Limited', 'TIMEOUT'
+    ];
+
     for (const catKey of Object.keys(report.categories)) {
         const tests = report.categories[catKey].tests || [];
-        count += tests.filter((t: any) => t.status === 'Error' || t.status === 'Warning').length;
+        count += tests.filter((t: any) =>
+            (t.status === 'Error' || t.status === 'Warning') &&
+            !ignoredInfos.some(noise => t.info?.includes(noise))
+        ).length;
     }
     return count;
 }
 
 export async function POST(request: NextRequest) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), GLOBAL_TIMEOUT_MS);
 
     try {
         const body = await request.json();
@@ -83,13 +130,8 @@ export async function POST(request: NextRequest) {
 
         const targetDomain = existingDoc.domain;
 
-        // Run Health Check with timeout
-        const report: any = await Promise.race([
-            runFullHealthCheck(targetDomain),
-            new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Global Timeout')), GLOBAL_TIMEOUT_MS - 500)
-            )
-        ]);
+        // Run Health Check (utilizing internal test-engine 15s timeouts)
+        const report: any = await runFullHealthCheck(targetDomain);
 
         const newCategory = determineIssueCategory(report);
 
@@ -106,7 +148,6 @@ export async function POST(request: NextRequest) {
         const spfRecord = report.rawSpf || existingDoc.spfFull;
         const dmarcRecord = report.rawDmarc || existingDoc.dmarcFull;
 
-        // Update DB
         await collection.updateOne(
             { _id: existingDoc._id },
             {
@@ -116,6 +157,7 @@ export async function POST(request: NextRequest) {
                     issuesDetected: newIssuesCount,
                     spfFull: spfRecord?.startsWith('v=') ? spfRecord : existingDoc.spfFull,
                     dmarcFull: dmarcRecord?.startsWith('v=') ? dmarcRecord : existingDoc.dmarcFull,
+                    issues: generateIssuesObject(report),
                     healthStatus: 'Scanned via Dashboard',
                     timestamp: new Date()
                 }
@@ -129,12 +171,7 @@ export async function POST(request: NextRequest) {
         });
 
     } catch (error: any) {
-        if (error.message === 'Global Timeout' || error.name === 'AbortError') {
-            return NextResponse.json({ error: 'Timeout', message: 'Scan took too long.' }, { status: 504 });
-        }
         console.error('Scan Error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-    } finally {
-        clearTimeout(timeoutId);
     }
 }

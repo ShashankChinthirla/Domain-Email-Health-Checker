@@ -5,7 +5,7 @@ import { auth } from '@/lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
-import { Loader2, ArrowLeft, CheckCircle2, Shield, Plus, Trash2, X } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle2, Shield, Plus, Trash2, X, Search } from 'lucide-react';
 import { getUserSettings, saveUserSettings } from '@/app/settings/actions';
 import { getUserIntegrations, addIntegration, removeIntegration, IntegrationDTO } from '@/app/settings/integrations-actions';
 import { UserSettings, DEFAULT_SETTINGS } from '@/app/settings/types';
@@ -34,6 +34,7 @@ export default function SettingsPage() {
     const [integrationLabel, setIntegrationLabel] = useState('');
     const [integrationApiKey, setIntegrationApiKey] = useState('');
     const [isManagingIntegrations, setIsManagingIntegrations] = useState(false);
+    const [activeTab, setActiveTab] = useState('general');
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -231,332 +232,362 @@ export default function SettingsPage() {
         <div className="min-h-screen bg-[#09090b] text-white selection:bg-blue-500/30 font-sans pb-32">
             <Navbar />
 
-            <main className="w-[calc(100%-3rem)] max-w-7xl mx-auto px-6 pt-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-                {/* Header Sequence */}
-                <div className="flex flex-col">
+            <main className="w-[calc(100%-3rem)] max-w-6xl mx-auto px-6 pt-24 pb-32 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="mb-8 flex items-center justify-between">
+                    <h1 className="text-3xl font-bold tracking-tight text-white mb-1">
+                        {isUserAdmin ? 'Account Settings' : 'Personal Profile'}
+                    </h1>
                     <button
                         onClick={() => router.back()}
-                        className="group flex items-center gap-2 text-[14px] font-semibold text-zinc-400 hover:text-white hover:bg-white/10 cursor-pointer transition-all duration-200 w-fit -ml-2 px-2.5 py-1.5 rounded-lg"
+                        className="group flex items-center gap-2 text-[14px] font-medium text-zinc-400 hover:text-white transition-colors cursor-pointer"
                     >
-                        <ArrowLeft size={16} className="text-zinc-500 group-hover:text-white transition-colors" /> Dashboard
+                        <ArrowLeft size={16} /> Back to Dashboard
                     </button>
-                    <div className="mb-6 mt-1">
-                        <h1 className="text-3xl font-bold tracking-tight text-white mb-1">{isUserAdmin ? 'Settings' : 'Profile'}</h1>
-                        <p className="text-[13px] text-white/40 leading-relaxed">
-                            {isUserAdmin ? 'Manage outbound communication preferences and signatures from this dashboard.' : 'Update your personal profile information.'}
-                        </p>
-                    </div>
                 </div>
 
-                <div className="space-y-8 bg-[#111] border border-white/5 rounded-2xl p-6 md:p-8">
-
-                    {/* section: General Profile (All Users) */}
-                    <section className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6">
-                        <div className="flex flex-col gap-1.5 pt-2">
-                            <h2 className="text-[16px] font-semibold text-white">Account Basics</h2>
-                            <p className="text-[13px] text-white/50 leading-relaxed">Your personal profile information.</p>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1.5 flex flex-col md:col-span-2">
-                                <label className="text-[13px] font-medium text-white/60">Email Address (Read-only)</label>
-                                <input
-                                    type="text"
-                                    value={user.email || ''}
-                                    disabled
-                                    className="w-full h-10 bg-[#1a1a1c] border border-white/5 rounded-lg px-3 text-[14px] text-white/40 cursor-not-allowed"
-                                />
-                            </div>
-                            <div className="space-y-1.5 flex flex-col md:col-span-2">
-                                <label className="text-[13px] font-medium text-white/60">Display Name</label>
-                                <input
-                                    type="text"
-                                    value={settings.displayName}
-                                    onChange={(e) => setSettings({ ...settings, displayName: e.target.value })}
-                                    className="w-full h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white/90 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-colors"
-                                    placeholder="e.g. John Doe"
-                                />
-                            </div>
-                        </div>
-                    </section>
-
-                    <div className="w-full h-px bg-white/5" />
-
-                    {/* section: Integrations */}
-                    <section className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6">
-                        <div className="flex flex-col gap-1.5 pt-2">
-                            <h2 className="text-[16px] font-semibold text-white">API Integrations</h2>
-                            <p className="text-[13px] text-white/50 leading-relaxed">Securely connect DNS providers to sync domains and apply automated fixes. Keys are AES-256 encrypted.</p>
+                <div className="flex flex-col md:flex-row gap-8">
+                    {/* Sidebar */}
+                    <aside className="w-full md:w-64 shrink-0 flex flex-col gap-1">
+                        <div className="relative mb-4">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                className="w-full bg-[#111] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-[14px] text-white focus:outline-none focus:border-white/20 transition-colors"
+                            />
                         </div>
 
-                        <div className="flex flex-col space-y-5">
-                            <form onSubmit={handleAddIntegration} className="flex flex-col gap-3 w-full bg-[#141417] border border-white/10 p-4 rounded-xl">
-                                <h3 className="text-[13px] font-semibold text-white/80">Add New Connection</h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <label className="text-[12px] text-white/50">Provider</label>
-                                        <select disabled className="w-full h-9 bg-[#111] border border-white/10 rounded-lg px-2.5 text-[13px] text-white/90 focus:outline-none transition-colors appearance-none cursor-not-allowed">
-                                            <option value="cloudflare">Cloudflare API Token</option>
-                                        </select>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[12px] text-white/50">Connection Label</label>
+                        <button onClick={() => setActiveTab('general')} className={`text-left px-3 py-2 rounded-md text-[14px] transition-colors cursor-pointer ${activeTab === 'general' ? 'bg-[#222] text-white font-medium' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
+                            General
+                        </button>
+                        <button onClick={() => setActiveTab('integrations')} className={`text-left px-3 py-2 rounded-md text-[14px] transition-colors cursor-pointer ${activeTab === 'integrations' ? 'bg-[#222] text-white font-medium' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
+                            Authentication
+                        </button>
+                        {isUserAdmin && (
+                            <>
+                                <button onClick={() => setActiveTab('access')} className={`text-left px-3 py-2 rounded-md text-[14px] transition-colors cursor-pointer ${activeTab === 'access' ? 'bg-[#222] text-white font-medium' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
+                                    Access Control
+                                </button>
+                                <button onClick={() => setActiveTab('outreach')} className={`text-left px-3 py-2 rounded-md text-[14px] transition-colors cursor-pointer ${activeTab === 'outreach' ? 'bg-[#222] text-white font-medium' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}>
+                                    Outreach Defaults
+                                </button>
+                            </>
+                        )}
+                    </aside>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+
+                        {activeTab === 'general' && (
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div className="border border-white/10 rounded-xl bg-[#09090b] shadow-sm overflow-hidden">
+                                    <div className="p-6">
+                                        <h2 className="text-[18px] font-semibold text-white mb-2">Email Address</h2>
+                                        <p className="text-[14px] text-white/50 mb-4">Your login email address.</p>
                                         <input
                                             type="text"
-                                            value={integrationLabel}
-                                            onChange={(e) => setIntegrationLabel(e.target.value)}
-                                            placeholder="e.g. My Business Cloudflare"
-                                            disabled={isManagingIntegrations}
-                                            required
-                                            className="w-full h-9 bg-[#111] border border-white/10 rounded-lg px-2.5 text-[13px] text-white/90 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-colors"
+                                            value={user.email || ''}
+                                            disabled
+                                            className="w-full max-w-md h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white/50 cursor-not-allowed"
                                         />
                                     </div>
-                                    <div className="space-y-1 sm:col-span-2">
-                                        <label className="text-[12px] text-white/50">API Token</label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="password"
-                                                value={integrationApiKey}
-                                                onChange={(e) => setIntegrationApiKey(e.target.value)}
-                                                placeholder="Paste secure API token..."
-                                                disabled={isManagingIntegrations}
-                                                required
-                                                className="flex-1 h-9 bg-[#111] border border-white/10 rounded-lg px-2.5 text-[13px] text-white/90 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-colors"
-                                            />
-                                            <button
-                                                type="submit"
-                                                disabled={isManagingIntegrations || !integrationLabel.trim() || !integrationApiKey.trim()}
-                                                className="h-9 px-4 flex items-center justify-center gap-1.5 bg-white hover:bg-zinc-200 text-black font-semibold text-[13px] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                                            >
-                                                {isManagingIntegrations ? <Loader2 className="w-4 h-4 animate-spin text-black/50" /> : <Plus className="w-4 h-4" />}
-                                                Connect
-                                            </button>
-                                        </div>
+                                    <div className="px-6 py-3 bg-[#0a0a0c] border-t border-white/10 text-[13px] text-white/40 flex items-center justify-between">
+                                        <span>Used for account verification and access management.</span>
                                     </div>
                                 </div>
-                            </form>
 
-                            <div className="flex flex-col gap-2">
-                                {integrations.length === 0 ? (
-                                    <div className="py-6 text-center text-[13px] text-white/30 border border-dashed border-white/10 rounded-xl bg-white/[0.02]">
-                                        No active integrations connected.
+                                <div className="border border-white/10 rounded-xl bg-[#09090b] shadow-sm overflow-hidden">
+                                    <div className="p-6">
+                                        <h2 className="text-[18px] font-semibold text-white mb-2">Display Name</h2>
+                                        <p className="text-[14px] text-white/50 mb-4">Please enter your full name, or a display name you are comfortable with.</p>
+                                        <input
+                                            type="text"
+                                            value={settings.displayName}
+                                            onChange={(e) => setSettings({ ...settings, displayName: e.target.value })}
+                                            className="w-full max-w-md h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white focus:outline-none focus:border-white/20 transition-colors"
+                                            placeholder="e.g. John Doe"
+                                        />
                                     </div>
-                                ) : (
-                                    integrations.map(int => (
-                                        <div key={int.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-gradient-to-r from-blue-500/5 to-transparent border border-blue-500/10 rounded-xl">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-400 shrink-0">
-                                                    <Shield className="w-4 h-4" />
+                                    <div className="px-6 py-3 bg-[#0a0a0c] border-t border-white/10 text-[13px] text-white/40 flex items-center justify-between">
+                                        <span>Please use 32 characters at maximum.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'integrations' && (
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div className="border border-white/10 rounded-xl bg-[#09090b] shadow-sm overflow-hidden">
+                                    <div className="p-6">
+                                        <h2 className="text-[18px] font-semibold text-white mb-2">API Integrations</h2>
+                                        <p className="text-[14px] text-white/50 mb-6">Securely connect DNS providers to sync domains and apply automated fixes. Keys are AES-256 encrypted.</p>
+
+                                        <div className="flex flex-col gap-3">
+                                            {integrations.length === 0 ? (
+                                                <div className="py-6 text-center text-[13px] text-white/30 border border-dashed border-white/10 rounded-xl bg-[#111]">
+                                                    No active integrations connected.
                                                 </div>
-                                                <div className="flex flex-col min-w-0">
-                                                    <span className="text-[14px] font-bold text-white/90 flex items-center gap-2">
-                                                        {int.label}
-                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                                            Cloudflare
-                                                        </span>
-                                                    </span>
-                                                    <span className="text-[11px] text-white/40 truncate flex items-center gap-1">
-                                                        Added {new Date(int.createdAt).toLocaleDateString()} &middot; Secured by AES-256
-                                                    </span>
+                                            ) : (
+                                                integrations.map(int => (
+                                                    <div key={int.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-[#111] border border-white/10 rounded-xl">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shrink-0">
+                                                                <Shield className="w-5 h-5 text-black" />
+                                                            </div>
+                                                            <div className="flex flex-col min-w-0">
+                                                                <span className="text-[15px] font-semibold text-white flex items-center gap-2">
+                                                                    {int.label}
+                                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-white/10 text-white/70">Cloudflare</span>
+                                                                </span>
+                                                                <span className="text-[13px] text-white/40 truncate">Added {new Date(int.createdAt).toLocaleDateString()}</span>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={async (e) => { e.preventDefault(); handleRemoveIntegration(int.id, int.label); }}
+                                                            disabled={isManagingIntegrations}
+                                                            className="text-[13px] font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 px-4 py-2 rounded-md transition-colors border border-rose-500/20 cursor-pointer"
+                                                        >
+                                                            Disconnect
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="bg-[#0a0a0c] border-t border-white/10">
+                                        <form onSubmit={handleAddIntegration} className="p-6">
+                                            <h3 className="text-[14px] font-semibold text-white mb-4">Add New Connection</h3>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[13px] font-medium text-white/60">Provider</label>
+                                                    <select disabled className="w-full h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white/50 focus:outline-none appearance-none cursor-not-allowed">
+                                                        <option value="cloudflare">Cloudflare API Token</option>
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[13px] font-medium text-white/60">Connection Label</label>
+                                                    <input
+                                                        type="text"
+                                                        value={integrationLabel}
+                                                        onChange={(e) => setIntegrationLabel(e.target.value)}
+                                                        placeholder="e.g. My Business Cloudflare"
+                                                        disabled={isManagingIntegrations}
+                                                        required
+                                                        className="w-full h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white focus:outline-none focus:border-white/20 transition-colors"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5 sm:col-span-2">
+                                                    <label className="text-[13px] font-medium text-white/60">API Token</label>
+                                                    <div className="flex flex-col sm:flex-row gap-3">
+                                                        <input
+                                                            type="password"
+                                                            value={integrationApiKey}
+                                                            onChange={(e) => setIntegrationApiKey(e.target.value)}
+                                                            placeholder="Paste secure API token..."
+                                                            disabled={isManagingIntegrations}
+                                                            required
+                                                            className="flex-1 min-w-0 h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white focus:outline-none focus:border-white/20 transition-colors"
+                                                        />
+                                                        <button
+                                                            type="submit"
+                                                            disabled={isManagingIntegrations || !integrationLabel.trim() || !integrationApiKey.trim()}
+                                                            className="h-10 px-6 flex items-center justify-center gap-2 bg-white hover:bg-zinc-200 text-black font-semibold text-[14px] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 cursor-pointer"
+                                                        >
+                                                            {isManagingIntegrations ? <Loader2 className="w-4 h-4 animate-spin text-black/50" /> : <Plus className="w-4 h-4" />}
+                                                            Connect
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => handleRemoveIntegration(int.id, int.label)}
-                                                disabled={isManagingIntegrations}
-                                                className="text-[12px] font-medium text-rose-400/70 hover:text-rose-400 hover:bg-rose-400/10 px-3 py-1.5 rounded-lg transition-colors cursor-pointer block text-left"
-                                            >
-                                                Disconnect
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
+                                        </form>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </section>
+                        )}
 
-                    {isUserAdmin && (
-                        <>
-                            <div className="w-full h-px bg-white/5" />
+                        {isUserAdmin && activeTab === 'access' && (
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div className="border border-white/10 rounded-xl bg-[#09090b] shadow-sm overflow-hidden">
+                                    <div className="p-6">
+                                        <h2 className="text-[18px] font-semibold text-white mb-2">Access Management</h2>
+                                        <p className="text-[14px] text-white/50 mb-6">Control which accounts have root authorization to access this dashboard.</p>
 
-                            {/* section: Access Management */}
-                            <section className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6">
-                                <div className="flex flex-col gap-1.5 pt-2">
-                                    <h2 className="text-[16px] font-semibold text-white">Access Management</h2>
-                                    <p className="text-[13px] text-white/50 leading-relaxed">Control which accounts have root authorization.</p>
-                                </div>
-
-                                <div className="flex flex-col space-y-4">
-                                    <form onSubmit={handleAddAdmin} className="flex flex-col sm:flex-row items-center gap-3 w-full">
-                                        <div
-                                            className="flex-1 w-full min-h-10 bg-[#141417] border border-white/10 rounded-lg p-1.5 flex flex-wrap items-center gap-1.5 focus-within:border-white/20 focus-within:bg-zinc-900 transition-colors cursor-text"
-                                            onClick={() => document.getElementById('admin-email-input')?.focus()}
-                                        >
-                                            {newAdminEmails.map(email => (
-                                                <div key={email} className="flex items-center gap-1 text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-1 rounded-md text-[13px] font-medium tracking-wide shadow-sm">
-                                                    {email}
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); removeEmailToken(email); }}
-                                                        className="text-blue-400/50 hover:text-blue-400 transition-colors ml-0.5"
-                                                    >
-                                                        <X className="w-3 h-3" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            <input
-                                                id="admin-email-input"
-                                                type="text"
-                                                value={adminInputValue}
-                                                onChange={(e) => setAdminInputValue(e.target.value)}
-                                                onKeyDown={handleEmailInputKeyDown}
-                                                placeholder={newAdminEmails.length === 0 ? "rafi@gmail.com, sabir@gmail.com..." : ""}
-                                                className="flex-1 min-w-[180px] bg-transparent border-none text-[14px] text-white/90 focus:outline-none focus:ring-0 px-1 py-1"
-                                                disabled={isManagingAdmins}
-                                            />
+                                        <div className="bg-[#111] border border-white/10 rounded-xl overflow-hidden shadow-inner max-h-[300px] overflow-y-auto mb-6">
+                                            <ul className="divide-y divide-white/5">
+                                                {adminUsers.map((admin) => (
+                                                    <li key={admin.email} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center border border-white/10 text-zinc-300 shrink-0">
+                                                                {admin.email.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div className="flex flex-col min-w-0">
+                                                                <span className="text-[14px] font-bold text-white truncate">{admin.email}</span>
+                                                                <span className="text-[12px] text-zinc-500 truncate">Added by {admin.addedBy}</span>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveAdmin(admin.email)}
+                                                            disabled={isManagingAdmins || admin.email === 'shashankshashankc39@gmail.com' || admin.email === user?.email}
+                                                            className="p-2 text-rose-500/50 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                                                            title="Revoke Access"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                                {adminUsers.length === 0 && (
+                                                    <li className="p-6 text-center text-zinc-500 text-[14px]">No active administrators found.</li>
+                                                )}
+                                            </ul>
                                         </div>
-                                        <button
-                                            type="submit"
-                                            disabled={isManagingAdmins || (newAdminEmails.length === 0 && !adminInputValue.trim())}
-                                            className="h-10 px-5 w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-[13px] rounded-lg transition-colors shadow-[0_0_15px_rgba(37,99,235,0.2)] disabled:opacity-50 disabled:shadow-none cursor-pointer whitespace-nowrap"
-                                        >
-                                            {isManagingAdmins ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send Invite'}
-                                        </button>
-                                    </form>
 
-                                    <div className="bg-[#141417] border border-white/10 rounded-xl overflow-hidden shadow-inner max-h-[250px] overflow-y-auto">
-                                        <ul className="divide-y divide-white/5">
-                                            {adminUsers.map((admin) => (
-                                                <li key={admin.email} className="flex items-center justify-between p-3 hover:bg-white/5 transition-colors">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-500/20 to-indigo-500/20 flex items-center justify-center border border-white/5 text-blue-400 shrink-0">
-                                                            <Shield className="w-3.5 h-3.5" />
-                                                        </div>
-                                                        <div className="flex flex-col min-w-0">
-                                                            <span className="text-[13px] font-bold text-white/90 truncate">{admin.email}</span>
-                                                            <span className="text-[11px] text-white/40 truncate">Added by {admin.addedBy}</span>
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRemoveAdmin(admin.email)}
-                                                        disabled={isManagingAdmins || admin.email === 'shashankshashankc39@gmail.com' || admin.email === user?.email}
-                                                        className="p-2 text-rose-500/50 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-                                                        title="Revoke Access"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </li>
-                                            ))}
-                                            {adminUsers.length === 0 && (
-                                                <li className="p-6 text-center text-white/30 text-[13px]">No active administrators found.</li>
-                                            )}
-                                        </ul>
-                                    </div>
-                                </div>
-                            </section>
-
-                            <div className="w-full h-px bg-white/5" />
-
-                            {/* section: Signature details */}
-                            <section className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6">
-                                <div className="flex flex-col gap-1.5 pt-2">
-                                    <h2 className="text-[16px] font-semibold text-white">Signature Details</h2>
-                                    <p className="text-[13px] text-white/50 leading-relaxed">Personal details appended to custom outreach emails for admins.</p>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-1.5 flex flex-col">
-                                        <label className="text-[13px] font-medium text-white/60">Full Name</label>
-                                        <input
-                                            type="text"
-                                            value={settings.senderName}
-                                            onChange={(e) => setSettings({ ...settings, senderName: e.target.value })}
-                                            className="w-full h-10 bg-[#141417] border border-white/10 rounded-lg px-3 text-[14px] text-white/90 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-colors"
-                                            placeholder="e.g. Security Admin"
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5 flex flex-col">
-                                        <label className="text-[13px] font-medium text-white/60">Job Role</label>
-                                        <input
-                                            type="text"
-                                            value={settings.senderTitle}
-                                            onChange={(e) => setSettings({ ...settings, senderTitle: e.target.value })}
-                                            className="w-full h-10 bg-[#141417] border border-white/10 rounded-lg px-3 text-[14px] text-white/90 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-colors"
-                                            placeholder="e.g. Head of IT"
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5 flex flex-col md:col-span-2">
-                                        <label className="text-[13px] font-medium text-white/60">Contact Number</label>
-                                        <input
-                                            type="text"
-                                            value={settings.senderPhone}
-                                            onChange={(e) => setSettings({ ...settings, senderPhone: e.target.value })}
-                                            className="w-full h-10 bg-[#141417] border border-white/10 rounded-lg px-3 text-[14px] text-white/90 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-colors"
-                                            placeholder="e.g. +1 (555) 000-0000"
-                                        />
-                                    </div>
-                                </div>
-                            </section>
-
-                            <div className="w-full h-px bg-white/5" />
-
-                            {/* section: email client */}
-                            <section className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6">
-                                <div className="flex flex-col gap-1.5 pt-2">
-                                    <h2 className="text-[16px] font-semibold text-white">Email Client Routing</h2>
-                                    <p className="text-[13px] text-white/50 leading-relaxed">Select what app opens when you click a domain owner&apos;s email address in the dashboard.</p>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    {[
-                                        { id: 'default', label: 'System Default', desc: 'Mail, Outlook app, Apple Mail' },
-                                        { id: 'gmail', label: 'Google Workspace', desc: 'New tab in Gmail web client' },
-                                        { id: 'outlook', label: 'Microsoft 365', desc: 'New tab in Outlook web client' }
-                                    ].map((option) => {
-                                        const isActive = settings.emailClient === option.id;
-                                        return (
-                                            <button
-                                                key={option.id}
-                                                onClick={() => setSettings({ ...settings, emailClient: option.id as 'default' | 'gmail' | 'outlook' })}
-                                                className={`group relative text-left flex flex-col p-4 rounded-xl border transition-all duration-200 outline-none cursor-pointer hover:-translate-y-0.5 ${isActive
-                                                    ? 'bg-zinc-800 border-white/20 shadow-md ring-1 ring-white/10'
-                                                    : 'bg-[#141417] border-white/10 hover:bg-[#1f1f22] hover:border-white/20 hover:shadow-sm'
-                                                    }`}
+                                        <form onSubmit={handleAddAdmin} className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full max-w-2xl">
+                                            <div
+                                                className="flex-1 w-full min-h-10 bg-[#111] border border-white/10 rounded-lg p-1.5 flex flex-wrap items-center gap-1.5 focus-within:border-white/20 transition-colors cursor-text"
+                                                onClick={() => document.getElementById('admin-email-input')?.focus()}
                                             >
-                                                <span className={`text-[14px] font-medium transition-colors pr-6 ${isActive ? 'text-white' : 'text-white/70 group-hover:text-white/90'}`}>
-                                                    {option.label}
-                                                </span>
-                                                <span className="text-[12px] text-white/40 mt-1">{option.desc}</span>
-                                                <div className={`absolute top-4 right-4 flex items-center justify-center w-3 h-3 rounded-full border transition-colors ${isActive ? 'border-transparent' : 'border-white/20 group-hover:border-white/40 bg-black/20'}`}>
-                                                    {isActive && (
-                                                        <div className="w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
-                                                    )}
-                                                </div>
+                                                {newAdminEmails.map(email => (
+                                                    <div key={email} className="flex items-center gap-1 bg-white/10 border border-white/10 px-2 py-1 rounded-md text-[13px] font-medium text-white shadow-sm">
+                                                        {email}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); removeEmailToken(email); }}
+                                                            className="text-zinc-400 hover:text-white transition-colors ml-1 cursor-pointer"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <input
+                                                    id="admin-email-input"
+                                                    type="text"
+                                                    value={adminInputValue}
+                                                    onChange={(e) => setAdminInputValue(e.target.value)}
+                                                    onKeyDown={handleEmailInputKeyDown}
+                                                    placeholder={newAdminEmails.length === 0 ? "Invite users by email..." : ""}
+                                                    className="flex-1 min-w-[180px] bg-transparent border-none text-[14px] text-white focus:outline-none focus:ring-0 px-2 py-1"
+                                                    disabled={isManagingAdmins}
+                                                />
+                                            </div>
+                                            <button
+                                                type="submit"
+                                                disabled={isManagingAdmins || (newAdminEmails.length === 0 && !adminInputValue.trim())}
+                                                className="h-10 px-5 w-full sm:w-auto flex items-center justify-center gap-2 bg-white hover:bg-zinc-200 text-black font-semibold text-[14px] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer"
+                                            >
+                                                {isManagingAdmins ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send Invite'}
                                             </button>
-                                        );
-                                    })}
+                                        </form>
+                                    </div>
+                                    <div className="px-6 py-3 bg-[#0a0a0c] border-t border-white/10 text-[13px] text-white/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                        <span>Administrators have full access to view, edit, and initiate remediation scans.</span>
+                                    </div>
                                 </div>
-                            </section>
+                            </div>
+                        )}
 
-                            <div className="w-full h-px bg-white/5" />
+                        {isUserAdmin && activeTab === 'outreach' && (
+                            <div className="space-y-6 animate-in fade-in duration-300">
+                                <div className="border border-white/10 rounded-xl bg-[#09090b] shadow-sm overflow-hidden">
+                                    <div className="p-6">
+                                        <h2 className="text-[18px] font-semibold text-white mb-2">Signature Details</h2>
+                                        <p className="text-[14px] text-white/50 mb-6">Personal details appended to custom outreach emails for admins.</p>
 
-                            {/* section: message template */}
-                            <section className="grid grid-cols-1 lg:grid-cols-[250px_1fr] gap-6">
-                                <div className="flex flex-col gap-1.5 pt-2">
-                                    <h2 className="text-[16px] font-semibold text-white">Issue Outreach Template</h2>
-                                    <p className="text-[13px] text-white/50 leading-relaxed">This text gets automatically injected into the email body along with the exact issues found when a domain has problems.</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl">
+                                            <div className="space-y-1.5 flex flex-col">
+                                                <label className="text-[13px] font-medium text-white/60">Full Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={settings.senderName}
+                                                    onChange={(e) => setSettings({ ...settings, senderName: e.target.value })}
+                                                    className="w-full h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white focus:outline-none focus:border-white/20 transition-colors"
+                                                    placeholder="e.g. Security Admin"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5 flex flex-col">
+                                                <label className="text-[13px] font-medium text-white/60">Job Role</label>
+                                                <input
+                                                    type="text"
+                                                    value={settings.senderTitle}
+                                                    onChange={(e) => setSettings({ ...settings, senderTitle: e.target.value })}
+                                                    className="w-full h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white focus:outline-none focus:border-white/20 transition-colors"
+                                                    placeholder="e.g. Head of IT"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5 flex flex-col md:col-span-2">
+                                                <label className="text-[13px] font-medium text-white/60">Contact Number</label>
+                                                <input
+                                                    type="text"
+                                                    value={settings.senderPhone}
+                                                    onChange={(e) => setSettings({ ...settings, senderPhone: e.target.value })}
+                                                    className="w-full max-w-sm h-10 bg-[#111] border border-white/10 rounded-lg px-3 text-[14px] text-white focus:outline-none focus:border-white/20 transition-colors"
+                                                    placeholder="e.g. +1 (555) 000-0000"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="px-6 py-3 bg-[#0a0a0c] border-t border-white/10 text-[13px] text-white/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                        <span>This signature will be formatted properly below your template.</span>
+                                    </div>
                                 </div>
-                                <div className="flex relative">
-                                    <textarea
-                                        value={settings.messageTemplate}
-                                        onChange={(e) => setSettings({ ...settings, messageTemplate: e.target.value })}
-                                        rows={8}
-                                        className="w-full bg-[#141417] border border-white/10 rounded-xl p-4 text-[14px] text-white/80 focus:outline-none focus:border-white/20 focus:bg-zinc-900 transition-all font-medium resize-y"
-                                        placeholder="Write your default email message..."
-                                    />
+
+                                <div className="border border-white/10 rounded-xl bg-[#09090b] shadow-sm overflow-hidden">
+                                    <div className="p-6">
+                                        <h2 className="text-[18px] font-semibold text-white mb-2">Email Client Routing</h2>
+                                        <p className="text-[14px] text-white/50 mb-6">Select what app opens when you click a domain owner's email address in the dashboard.</p>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            {[
+                                                { id: 'default', label: 'System Default', desc: 'Mail, Outlook app, Apple Mail' },
+                                                { id: 'gmail', label: 'Google Workspace', desc: 'New tab in Gmail web client' },
+                                                { id: 'outlook', label: 'Microsoft 365', desc: 'New tab in Outlook web client' }
+                                            ].map((option) => {
+                                                const isActive = settings.emailClient === option.id;
+                                                return (
+                                                    <button
+                                                        key={option.id}
+                                                        onClick={() => setSettings({ ...settings, emailClient: option.id as 'default' | 'gmail' | 'outlook' })}
+                                                        className={`group relative text-left flex flex-col p-4 rounded-xl border transition-all duration-200 outline-none cursor-pointer ${isActive
+                                                                ? 'bg-[#1a1a1c] border-white/20 ring-1 ring-white/10'
+                                                                : 'bg-[#111] border-white/10 hover:bg-[#1a1a1c] hover:border-white/20'
+                                                            }`}
+                                                    >
+                                                        <span className={`text-[14px] font-medium transition-colors pr-6 ${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-white'}`}>
+                                                            {option.label}
+                                                        </span>
+                                                        <span className="text-[12px] text-zinc-500 mt-1">{option.desc}</span>
+                                                        <div className={`absolute top-4 right-4 flex items-center justify-center w-4 h-4 rounded-full border transition-colors ${isActive ? 'border-transparent bg-white' : 'border-white/20 bg-black/20 group-hover:border-white/40'}`}>
+                                                            {isActive && (
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-black" />
+                                                            )}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
                                 </div>
-                            </section>
-                        </>
-                    )}
+
+                                <div className="border border-white/10 rounded-xl bg-[#09090b] shadow-sm overflow-hidden">
+                                    <div className="p-6">
+                                        <h2 className="text-[18px] font-semibold text-white mb-2">Issue Outreach Template</h2>
+                                        <p className="text-[14px] text-white/50 mb-6">This text gets automatically injected into the email body along with the exact issues found when a domain has problems.</p>
+
+                                        <textarea
+                                            value={settings.messageTemplate}
+                                            onChange={(e) => setSettings({ ...settings, messageTemplate: e.target.value })}
+                                            rows={8}
+                                            className="w-full bg-[#111] border border-white/10 rounded-xl p-4 text-[14px] text-white focus:outline-none focus:border-white/20 transition-colors font-medium resize-y"
+                                            placeholder="Write your default email message..."
+                                        />
+                                    </div>
+                                    <div className="px-6 py-3 bg-[#0a0a0c] border-t border-white/10 text-[13px] text-white/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                        <span>Use clear and professional language to notify internal stakeholders.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
             </main>

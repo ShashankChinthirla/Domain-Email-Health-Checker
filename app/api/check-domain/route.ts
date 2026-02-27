@@ -4,12 +4,12 @@ import clientPromise from '@/lib/mongodb';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request) {
-    // 9-second fail-safe for Vercel Hobby (10s limit)
-    const GLOBAL_TIMEOUT_MS = 9000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), GLOBAL_TIMEOUT_MS);
+// Remove the 9-second Vercel cap — we run locally where there's no function timeout.
+// The test-engine already has per-category 15-second timeouts built in, which is the
+// right place to handle slow DNS. The outer Promise.race was causing false "Server Timeout"
+// errors even on clean domains with mildly slow DNS responses.
 
+export async function POST(request: Request) {
     try {
         const body = await request.json();
         const { domain } = body;
@@ -20,30 +20,21 @@ export async function POST(request: Request) {
 
         const cleanDomain = domain.trim().toLowerCase();
 
-        // 1. RUN ORIGINAL TEST LOGIC (Exactly as it was)
-        // This ensures HTTP and internal timeouts are handled by the engine normally
-        const healthReport = await Promise.race([
-            runFullHealthCheck(cleanDomain),
-            new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('Global Timeout')), GLOBAL_TIMEOUT_MS - 500)
-            )
-        ]);
+        // Run the full health check — each category has its own 15s timeout inside the engine.
+        const healthReport = await runFullHealthCheck(cleanDomain);
 
-        // 2. FETCH MONGODB EMAIL (Simple, separate step)
+        // Fetch the owner email from MongoDB (optional enrichment)
         let dbEmail = null;
         try {
             const client = await clientPromise;
-            // Database: "vercel", Collection: "dfyinfrasetups" (from your screenshot)
             const db = client.db("vercel");
             const collection = db.collection("dfyinfrasetups");
 
-            // Search for the domain (case-insensitive)
             const doc = await collection.findOne({
                 domain: { $regex: new RegExp(`^${cleanDomain}$`, "i") }
             });
 
             if (doc) {
-                // Priority: 'user' field, then first contact email
                 const typedDoc = doc as { user?: string; contactDetails?: { email?: string }[] };
                 dbEmail = typedDoc.user || typedDoc.contactDetails?.[0]?.email || null;
             }
@@ -57,16 +48,7 @@ export async function POST(request: Request) {
         });
 
     } catch (error: unknown) {
-        if (error instanceof Error && (error.message === 'Global Timeout' || error.name === 'AbortError')) {
-            return NextResponse.json({
-                error: 'Timeout',
-                message: 'The health check exceeded execution limits. Please try again.',
-                status: 'partial'
-            }, { status: 200 });
-        }
         console.error('API Error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-    } finally {
-        clearTimeout(timeoutId);
     }
 }

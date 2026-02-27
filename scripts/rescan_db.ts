@@ -42,6 +42,9 @@ function determineIssueCategory(report: any): string {
     const multipleDmarc = dmarcTests.some((t: any) => t.name?.includes('Multiple') && t.status === 'Error');
     const dmarcNone = dmarcTests.some((t: any) => t.name?.includes('Policy') && t.info?.toLowerCase().includes('none'));
 
+    const spfGeneralError = spfTests.some((t: any) => t.status === 'Error' && t.info !== 'Missing' && !t.name?.includes('Multiple'));
+    const dmarcGeneralError = dmarcTests.some((t: any) => t.status === 'Error' && t.info !== 'Missing' && !t.name?.includes('Multiple'));
+
     const dkimErrors = dkimTests.filter((t: any) => t.status === 'Error');
 
     // Prioritize Email Deliverability Issues Above Everything Else
@@ -50,6 +53,12 @@ function determineIssueCategory(report: any): string {
     if (missingSpf) return 'No_SPF_Only';
     if (multipleSpf) return 'Multiple_SPF';
     if (multipleDmarc) return 'Multiple_DMARC';
+
+    // Catch-all for unresolved DNS issues affecting SPF or DMARC
+    if (spfGeneralError && dmarcGeneralError) return 'No_SPF_AND_DMARC';
+    if (dmarcGeneralError) return 'No_DMARC_Only';
+    if (spfGeneralError) return 'No_SPF_Only';
+
     if (dkimErrors.length > 0) return 'DKIM_Issues';
     if (dmarcNone) return 'DMARC_Policy_None';
 

@@ -28,7 +28,13 @@ function determineIssueCategory(report: any): string {
 
     // Safeguard: If core tests failed to load due to network timeouts, skip the domain entirely
     const coreFailedToLoad = [...dnsTests, ...spfTests, ...dmarcTests, ...dkimTests].some((t: any) =>
-        t.info === 'Timed Out' || t.info === 'Timeout'
+        t.info === 'Timed Out' ||
+        t.info === 'Timeout' ||
+        t.info === 'DNS Error' ||
+        t.info === 'DNS Lookup Failed' ||
+        t.info === 'Failed' ||
+        t.info === 'Unreachable' ||
+        t.info === 'Rate Limited'
     );
 
     if (coreFailedToLoad) {
@@ -42,6 +48,9 @@ function determineIssueCategory(report: any): string {
     const multipleDmarc = dmarcTests.some((t: any) => t.name?.includes('Multiple') && t.status === 'Error');
     const dmarcNone = dmarcTests.some((t: any) => t.name?.includes('Policy') && t.info?.toLowerCase().includes('none'));
 
+    const spfGeneralError = spfTests.some((t: any) => t.status === 'Error' && t.info !== 'Missing' && !t.name?.includes('Multiple'));
+    const dmarcGeneralError = dmarcTests.some((t: any) => t.status === 'Error' && t.info !== 'Missing' && !t.name?.includes('Multiple'));
+
     const dkimErrors = dkimTests.filter((t: any) => t.status === 'Error');
 
     // Prioritize Email Deliverability Issues Above Everything Else
@@ -50,13 +59,19 @@ function determineIssueCategory(report: any): string {
     if (missingSpf) return 'No_SPF_Only';
     if (multipleSpf) return 'Multiple_SPF';
     if (multipleDmarc) return 'Multiple_DMARC';
+
+    // Catch-all for unresolved DNS issues affecting SPF or DMARC
+    if (spfGeneralError && dmarcGeneralError) return 'No_SPF_AND_DMARC';
+    if (dmarcGeneralError) return 'No_DMARC_Only';
+    if (spfGeneralError) return 'No_SPF_Only';
+
     if (dkimErrors.length > 0) return 'DKIM_Issues';
     if (dmarcNone) return 'DMARC_Policy_None';
 
-    const blacklistErrors = blacklistTests.filter((t: any) => t.status === 'Error' && t.info !== 'Timed Out');
+    const blacklistErrors = blacklistTests.filter((t: any) => t.status === 'Error' && !t.info?.includes('Timeout') && t.info !== 'Rate Limited');
     if (blacklistErrors.length > 0) return 'blacklist_issue';
 
-    const webErrors = webTests.filter((t: any) => t.status === 'Error' && !t.info?.includes('Timeout'));
+    const webErrors = webTests.filter((t: any) => t.status === 'Error' && !t.info?.includes('Timeout') && t.info !== 'Unreachable');
     if (webErrors.length > 0) return 'http_issue';
 
     return 'Clean';
@@ -65,11 +80,46 @@ function determineIssueCategory(report: any): string {
 function calculateIssuesCount(report: any): number {
     let count = 0;
     if (!report.categories) return count;
+
+    // Ignore all network noise — these are environmental failures, not security issues
+    const ignoredInfos = [
+        'Timed Out', 'Timeout', 'DNS Error', 'DNS Lookup Failed',
+        'Failed', 'Unreachable', 'Rate Limited', 'TIMEOUT'
+    ];
+
     for (const catKey of Object.keys(report.categories)) {
         const tests = report.categories[catKey].tests || [];
-        count += tests.filter((t: any) => t.status === 'Error' || t.status === 'Warning').length;
+        count += tests.filter((t: any) =>
+            (t.status === 'Error' || t.status === 'Warning') &&
+            !ignoredInfos.some(noise => t.info?.includes(noise))
+        ).length;
     }
     return count;
+}
+
+function generateIssuesObject(report: any) {
+    const issues: any = {};
+    const categories = report.categories || {};
+
+    const hasError = (tests: any[]) => tests?.some(t => t.status === 'Error');
+    const hasWarning = (tests: any[]) => tests?.some(t => t.status === 'Warning');
+
+    if (hasError(categories['spf']?.tests)) issues.spf = "ERROR: See report for details";
+    else if (hasWarning(categories['spf']?.tests)) issues.spf = "WARNING: See report";
+
+    if (hasError(categories['dmarc']?.tests)) issues.dmarc = "ERROR: See report for details";
+    else if (hasWarning(categories['dmarc']?.tests)) issues.dmarc = "WARNING: See report";
+
+    if (hasError(categories['dkim']?.tests)) issues.dkim = "ERROR: See report for details";
+    else if (hasWarning(categories['dkim']?.tests)) issues.dkim = "WARNING: See report";
+
+    if (hasError(categories['blacklist']?.tests)) issues.blacklist = "ERROR: See report for details";
+    else if (hasWarning(categories['blacklist']?.tests)) issues.blacklist = "WARNING: See report";
+
+    if (hasError(categories['webServer']?.tests)) issues.web = "ERROR: See report for details";
+    else if (hasWarning(categories['webServer']?.tests)) issues.web = "WARNING: See report";
+
+    return issues;
 }
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -109,6 +159,7 @@ async function processDomainWithRetry(doc: any, collection: any): Promise<any> {
                         issuesDetected: newIssuesCount,
                         spfFull: spfRecord?.startsWith('v=') ? spfRecord : doc.spfFull,
                         dmarcFull: dmarcRecord?.startsWith('v=') ? dmarcRecord : doc.dmarcFull,
+                        issues: generateIssuesObject(report)
                     }
                 }
             );
@@ -181,7 +232,7 @@ async function runRescan() {
 
         let absoluteIndex = skipCount;
         let processed = 0;
-        const BATCH_SIZE = 100; // Massively increased concurrency for 10k domains in 5 mins
+        const BATCH_SIZE = 20; // Reduced to prevent network saturation — each domain runs 30+ DNS/HTTP checks concurrently
         let batch = [];
 
         while (await cursor.hasNext()) {

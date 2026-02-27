@@ -39,16 +39,62 @@ function isPrivateIP(ip: string): boolean {
     return false;
 }
 
-// Helper: Robust DNS TXT Lookup (Retries handled by dns-cache)
-async function resolveTxtWithRetry(domain: string): Promise<string[][]> {
+// --- DO CHECK: Google DNS-over-HTTPS (DoH) Fallback ---
+// Fixes "False Positives" where local UDP resolvers drop packets under heavy 10,000 concurrent loads.
+async function resolveTxtWithDoH(domain: string): Promise<string[][]> {
     try {
-        return await dns.resolveTxt(domain);
+        const url = `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=TXT`;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        // Node's native fetch (available in Next.js 14+)
+        const res = await fetch(url, { headers: { accept: 'application/dns-json' }, cache: 'no-store', signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+            throw new Error(`DOH_RESPONDED_WITH_HTTP_${res.status}`);
+        }
+
+        const json = await res.json();
+        if (!json.Answer || json.Answer.length === 0) return [];
+
+        // Type 16 is TXT
+        return json.Answer
+            .filter((a: any) => a.type === 16)
+            .map((a: any) => {
+                // dns.google wraps TXT answers in literal quotes like: "\"v=spf1...\""
+                let text = a.data;
+                if (typeof text === 'string' && text.startsWith('"') && text.endsWith('"')) {
+                    text = text.slice(1, -1);
+                }
+                return [text];
+            });
     } catch (error: any) {
-        // ENOTFOUND/ENODATA -> Missing
-        if (error.code === 'ENOTFOUND' || error.code === 'ENODATA' || error.message?.includes('ENOTFOUND')) {
-            return [];
+        if (error.name === 'AbortError' || error.message?.includes('Timeout') || error.message?.includes('fetch failed')) {
+            throw new Error('DOH_NETWORK_ERROR_OR_TIMEOUT');
         }
         throw error;
+    }
+}
+
+// Helper: Robust DNS TXT Lookup (Retries handled by dns-cache, Verifications by DoH)
+async function resolveTxtWithRetry(domain: string): Promise<string[][]> {
+    try {
+        // Fast path: Try local cached UDP resolver first
+        const records = await dns.resolveTxt(domain);
+
+        // Some local resolvers just return [] under load instead of throwing ENOTFOUND
+        if (!records || records.length === 0) {
+            return await resolveTxtWithDoH(domain);
+        }
+
+        return records;
+    } catch (error: any) {
+        // Slow path: Verification
+        // If local UDP dropped the packet, timed out, or says it isn't found,
+        // we ALWAYS do a secondary HTTP check to Google to be 100% sure.
+        return await resolveTxtWithDoH(domain);
     }
 }
 
@@ -57,8 +103,21 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, defaultVal
     let timeoutHandle: any;
     const timeoutPromise = new Promise<T>((resolve) => {
         timeoutHandle = setTimeout(() => {
-            console.warn(`[TIMEOUT] Category ${category} exceeded ${timeoutMs}ms. Returning partial results.`);
-            resolve(defaultValue);
+            console.warn(`[TIMEOUT] Category ${category} exceeded ${timeoutMs}ms.`);
+            const fallbackError: any = [{
+                name: `${category} Lookup Timeout`,
+                status: 'Error',
+                info: 'Timed Out',
+                reason: `The system could not resolve ${category} within ${timeoutMs}ms due to network congestion, dead name servers, or strict ratelimits.`,
+                recommendation: 'The system has logged this delay and you may attempt to scan again later.'
+            }];
+
+            // If the default value is an array (which it is for all our tests), return the fallback error.
+            if (Array.isArray(defaultValue)) {
+                resolve(fallbackError as unknown as T);
+            } else {
+                resolve(defaultValue);
+            }
         }, timeoutMs);
     });
     try {
@@ -105,7 +164,7 @@ async function runDNSTests(domain: string): Promise<TestResult[]> {
                     t.push({ name: 'DNS Record Published', status: 'Error', info: 'No A Records', reason: 'The domain does not resolve to an IPv4 address.', recommendation: 'Add an A record pointing to your web server.' });
                 }
             } catch {
-                t.push({ name: 'DNS Record Published', status: 'Error', info: 'Failed', reason: 'DNS lookup failed entirely.', recommendation: 'Check your domain registrar settings.' });
+                t.push({ name: 'DNS Record Published', status: 'Warning', info: 'DNS Lookup Failed', reason: 'Transient DNS lookup failure. Domain may exist but DNS was temporarily unreachable.', recommendation: 'Check your domain registrar settings. Try again.' });
             }
             return t;
         })(),
@@ -148,7 +207,7 @@ async function runDNSTests(domain: string): Promise<TestResult[]> {
                 if (error.code === 'ENOTFOUND' || error.code === 'ENODATA' || error.code === 'NOTFOUND') {
                     t.push({ name: 'MX Record Published', status: 'Error', info: 'Missing', reason: 'No MX records found.', recommendation: 'You cannot receive email without MX records.' });
                 } else {
-                    t.push({ name: 'MX Record Published', status: 'Error', info: 'DNS Error', reason: `DNS Lookup failed: ${error.message || 'Unknown error'}.`, recommendation: 'Check your DNS configuration or try again.' });
+                    t.push({ name: 'MX Record Published', status: 'Warning', info: 'DNS Lookup Failed', reason: `DNS Lookup temporarily failed: ${error.message || 'Unknown error'}. Domain may still be valid.`, recommendation: 'Check your DNS configuration or try again.' });
                 }
             }
             return t;
@@ -519,8 +578,8 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
             } else if (policy === 'quarantine') {
                 tests.push({ name: 'DMARC Policy', status: 'Pass', info: 'Quarantine', reason: 'Suspicious emails are sent to spam.', recommendation: 'Consider moving to reject for full protection.' });
             } else {
-                // SEVERITY PROMOTE: p=none is now an ERROR
-                tests.push({ name: 'DMARC Policy', status: 'Error', info: 'None', reason: 'Policy is set to "none", which offers no protection.', recommendation: 'Change to quarantine or reject when ready.', host: domain, result: 'DMARC Quarantine/Reject Policy Not Enabled' });
+                // DMARC p=none is informational only - not an error
+                tests.push({ name: 'DMARC Policy', status: 'Warning', info: 'None (Advisory)', reason: 'Policy is set to "none", which only monitors email—no enforcement. This is common during initial DMARC setup.', recommendation: 'When ready, upgrade to quarantine or reject for full protection.', host: domain, result: 'DMARC Policy Monitoring Only' });
             }
         } else {
             tests.push({ name: 'DMARC Policy', status: 'Error', info: 'Missing p= tag', reason: 'Policy tag is mandatory.', recommendation: 'Add p=reject, p=quarantine, or p=none.', host: domain, result: 'DMARC Record Missing' });
@@ -633,8 +692,8 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
         if (bimiReady) {
             tests.push({ name: 'BIMI Readiness', status: 'Pass', info: 'Ready', reason: 'DMARC policy supports BIMI implementation.', recommendation: 'You can now set up a BIMI record.', host: domain, result: 'BIMI Ready' });
         } else {
-            // SEVERITY PROMOTE: Error if not ready
-            tests.push({ name: 'BIMI Readiness', status: 'Error', info: 'Not Ready', reason: 'BIMI requires p=quarantine/reject and pct=100.', recommendation: 'Strengthen DMARC policy to enable BIMI.', host: domain, result: 'BIMI Not Ready' });
+            // BIMI is advisory – not a security requirement
+            tests.push({ name: 'BIMI Readiness', status: 'Warning', info: 'Not Ready', reason: 'BIMI requires p=quarantine/reject and pct=100. Optional but recommended for brand visibility.', recommendation: 'Strengthen DMARC policy when ready to enable BIMI.', host: domain, result: 'BIMI Not Ready' });
         }
 
     } catch (err: any) {
@@ -837,7 +896,7 @@ async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Pro
         results.push({
             name,
             status,
-            info: data.targets.length > 0 ? `Listed: ${data.targets.length} IP(s)` : 'Clean',
+            info: data.status === 'UNKNOWN' ? 'Rate Limited' : data.status === 'TIMEOUT' ? 'Timeout' : (data.targets.length > 0 ? `Listed: ${data.targets.length} IP(s)` : 'Clean'),
             reason,
             recommendation: rec,
             host: name,
@@ -870,7 +929,7 @@ async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Pro
         results.push({
             name: res.list,
             status,
-            info: res.status === 'FAIL' ? 'Listed' : (res.status === 'PASS' ? 'Clean' : res.status),
+            info: res.status === 'FAIL' ? 'Listed' : (res.status === 'PASS' ? 'Clean' : (res.status === 'UNKNOWN' ? 'Rate Limited' : res.status)),
             reason,
             recommendation: rec,
             host: res.list,
