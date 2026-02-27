@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         // 1. Process all integrations in parallel
         await Promise.all(integrations.map(async (integration) => {
             const encryptedKey = integration.encryptedApiKey;
-            const apiToken = decryptApiKey(encryptedKey);
+            const apiToken = await decryptApiKey(encryptedKey);
 
             if (!apiToken) {
                 console.error(`Failed to decrypt API key for integration ${integration.label}`);

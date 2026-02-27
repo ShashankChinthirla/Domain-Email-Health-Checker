@@ -2,7 +2,6 @@
 
 import clientPromise from '@/lib/mongodb';
 import { encryptApiKey } from '@/lib/encryption';
-import { randomUUID } from 'crypto';
 
 import { verifyToken } from '@/lib/auth';
 
@@ -37,10 +36,10 @@ export async function addIntegration(token: string, provider: 'cloudflare', labe
         const db = client.db('vercel');
         const collection = db.collection<Integration>('integrations');
 
-        const encryptedApiKey = encryptApiKey(apiKey);
+        const encryptedApiKey = await encryptApiKey(apiKey);
 
         const newIntegration: Integration = {
-            id: randomUUID(),
+            id: crypto.randomUUID(),
             email: email!,
             provider,
             label,
@@ -52,9 +51,9 @@ export async function addIntegration(token: string, provider: 'cloudflare', labe
         await collection.insertOne(newIntegration);
 
         return { success: true };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error adding integration:", error);
-        return { success: false, error: "Failed to add integration securely" };
+        return { success: false, error: "Failed to add integration securely: " + error.message };
     }
 }
 

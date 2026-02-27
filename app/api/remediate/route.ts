@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Integration not found or unauthorized.' }, { status: 404 });
         }
 
-        const apiToken = decryptApiKey(integration.encryptedApiKey);
+        const apiToken = await decryptApiKey(integration.encryptedApiKey);
         if (!apiToken) {
             return NextResponse.json({ error: 'Failed to decrypt integration API key.' }, { status: 500 });
         }
