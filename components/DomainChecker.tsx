@@ -19,6 +19,7 @@ import { LoginModal } from '@/components/LoginModal';
 import { Download, Upload, Search, ShieldCheck, Loader2, ArrowRight, ChevronDown, ChevronUp, CheckCircle2, CircleDashed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { useCallback } from 'react';
 
 // Defined outside to be stable
 const SCAN_STEPS = [
@@ -75,36 +76,64 @@ export function DomainChecker() {
     const pathname = usePathname();
     const autoDomain = searchParams.get('domain');
 
-    useEffect(() => {
-        if (autoDomain && !loading) {
-            // Only trigger if we don't already have results FOR THIS EXACT DOMAIN
-            if (!currentSingleResult || currentSingleResult.domain.toLowerCase() !== autoDomain.toLowerCase()) {
+    const fetchDomainHealth = useCallback(async (domain: string, signal?: AbortSignal) => {
+        // Sanitize domain
+        const cleanDomain = domain.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '').trim();
 
-                // First, check if we ALREADY fetched this domain recently in this session's history memory
-                const existingResult = results.find(r => r.domain.toLowerCase() === autoDomain.toLowerCase());
+        try {
+            const token = await auth.currentUser?.getIdToken();
+            const response = await fetch('/api/check-domain', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    domain: cleanDomain
+                }),
+                signal // Pass abort signal
+            });
+            const data = await response.json();
 
-                if (existingResult) {
-                    setDomainInput(existingResult.domain);
-                    setCurrentSingleResult(existingResult);
-                    window.scrollTo({ top: 0, behavior: 'instant' });
-                } else {
-                    setDomainInput(autoDomain);
-                    const timer = setTimeout(() => {
-                        handleAutoCheck(autoDomain);
-                    }, 100);
-                    return () => clearTimeout(timer);
-                }
+            // Handle Global Timeout (Partial Result)
+            if (data.status === 'partial') {
+                const fallback: FullHealthReport = {
+                    domain: cleanDomain,
+                    score: 0,
+                    rawSpf: null,
+                    rawDmarc: null,
+                    dmarcPolicy: null,
+                    mxRecords: [],
+                    categories: {
+                        problems: { category: 'Problems', tests: [{ name: 'Server Timeout', status: 'Error', info: 'Runtime Timeout', reason: 'Checking took too long.', recommendation: 'Try a single domain check.' }], stats: { passed: 0, warnings: 0, errors: 1 } },
+                        dns: { category: 'DNS', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        spf: { category: 'SPF', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        dmarc: { category: 'DMARC', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        dkim: { category: 'DKIM', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        blacklist: { category: 'Blacklist', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        webServer: { category: 'Web Server', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
+                        smtp: { category: 'SMTP', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } }
+                    }
+                };
+                return fallback;
             }
-        } else if (!autoDomain && currentSingleResult) {
-            // User went back to home page (no domain in URL), clear results but keep history array intact
-            setCurrentSingleResult(null);
-            setScanIndex(0);
-            setDomainInput('');
-        }
-    }, [autoDomain, currentSingleResult, loading, results]);
 
-    const handleAutoCheck = async (domainToSearch: string) => {
-        window.scrollTo({ top: 0, behavior: 'instant' });
+            if (!response.ok) throw new Error(data.error || 'Failed');
+            return data as FullHealthReport;
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                console.log('Request aborted');
+                return null;
+            }
+            console.error(error);
+            // If it's a manual check, show the error in UI
+            if (error.message) setInputError(error.message);
+            return null;
+        }
+    }, []);
+
+    const handleAutoCheck = useCallback(async (domainToSearch: string) => {
+        window.scrollTo({ top: 0, behavior: 'auto' });
         setLoading(true);
         setInputError(null);
         setCurrentSingleResult(null);
@@ -139,65 +168,37 @@ export function DomainChecker() {
         } catch (e) {
             clearInterval(progressInterval);
             setLoading(false);
+            setInputError('An error occurred during verification.');
         }
-    };
+    }, [fetchDomainHealth]);
 
+    useEffect(() => {
+        if (autoDomain && !loading) {
+            // Only trigger if we don't already have results FOR THIS EXACT DOMAIN
+            if (!currentSingleResult || currentSingleResult.domain.toLowerCase() !== autoDomain.toLowerCase()) {
 
-    const fetchDomainHealth = async (domain: string, signal?: AbortSignal) => {
-        // Sanitize domain
-        const cleanDomain = domain.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '').trim();
+                // First, check if we ALREADY fetched this domain recently in this session's history memory
+                const existingResult = results.find(r => r.domain.toLowerCase() === autoDomain.toLowerCase());
 
-        try {
-            const token = await auth.currentUser?.getIdToken();
-            const response = await fetch('/api/check-domain', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    domain: cleanDomain
-                }),
-                signal // Pass abort signal
-            });
-            const data = await response.json();
-
-            // Handle Global Timeout (Partial Result)
-            if (data.status === 'partial') {
-                const fallback: FullHealthReport = {
-                    domain: cleanDomain,
-                    score: 0,
-                    rawSpf: null,
-                    rawDmarc: null,
-                    dmarcPolicy: null,
-                    mxRecords: [],
-                    categories: {
-                        problems: { category: 'Problems', tests: [{ name: 'Server Timeout', status: 'Error', info: 'Vercel Limit', reason: 'DNS checks took too long (10s limit).', recommendation: 'Try a single domain check.' }], stats: { passed: 0, warnings: 0, errors: 1 } },
-                        dns: { category: 'DNS', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
-                        spf: { category: 'SPF', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
-                        dmarc: { category: 'DMARC', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
-                        dkim: { category: 'DKIM', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
-                        blacklist: { category: 'Blacklist', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
-                        webServer: { category: 'Web Server', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } },
-                        smtp: { category: 'SMTP', tests: [], stats: { passed: 0, warnings: 0, errors: 0 } }
-                    }
-                };
-                return fallback;
+                if (existingResult) {
+                    setDomainInput(existingResult.domain);
+                    setCurrentSingleResult(existingResult);
+                    window.scrollTo({ top: 0, behavior: 'auto' });
+                } else {
+                    setDomainInput(autoDomain);
+                    const timer = setTimeout(() => {
+                        handleAutoCheck(autoDomain);
+                    }, 100);
+                    return () => clearTimeout(timer);
+                }
             }
-
-            if (!response.ok) throw new Error(data.error || 'Failed');
-            return data as FullHealthReport;
-        } catch (error: any) {
-            if (error.name === 'AbortError') {
-                console.log('Request aborted');
-                return null;
-            }
-            console.error(error);
-            // If it's a manual check, show the error in UI
-            if (error.message) setInputError(error.message);
-            return null;
+        } else if (!autoDomain && currentSingleResult) {
+            // User went back to home page (no domain in URL), clear results but keep history array intact
+            setCurrentSingleResult(null);
+            setScanIndex(0);
+            setDomainInput('');
         }
-    };
+    }, [autoDomain, currentSingleResult, loading, results, handleAutoCheck]);
 
     const checkDomain = async (domain: string) => {
         return await fetchDomainHealth(domain); // Use common helper
@@ -211,7 +212,7 @@ export function DomainChecker() {
         params.set('domain', domainInput.trim().toLowerCase());
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
 
-        window.scrollTo({ top: 0, behavior: 'instant' });
+        window.scrollTo({ top: 0, behavior: 'auto' });
         setLoading(true);
         setInputError(null);
         setCurrentSingleResult(null);
@@ -496,7 +497,7 @@ export function DomainChecker() {
     const handleSelectDomain = (result: FullHealthReport) => {
         window.history.pushState({ view: 'details' }, '', `#${result.domain}`);
         setCurrentSingleResult(result);
-        window.scrollTo({ top: 0, behavior: 'instant' });
+        window.scrollTo({ top: 0, behavior: 'auto' });
     };
 
     // Lock scroll when loading

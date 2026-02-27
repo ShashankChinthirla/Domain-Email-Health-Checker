@@ -11,6 +11,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { getAdminMetrics, getPaginatedDomains } from '@/app/admin/actions';
 import { getUserSettings } from '@/app/settings/actions';
 import { UserSettings, DEFAULT_SETTINGS } from '@/app/settings/types';
+import { toast } from 'sonner';
 import { isAdmin } from '@/lib/roles';
 
 interface LogEntry {
@@ -170,7 +171,7 @@ function AdminDashboardContent() {
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [localSearchQuery, searchQuery]);
+  }, [localSearchQuery, searchQuery, setSearchQuery]);
 
   // LOGS STATE (Firebase)
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -242,7 +243,7 @@ function AdminDashboardContent() {
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [user, searchQuery, issueFilter, currentPage, refreshKey]);
+  }, [user, isUserAdmin, searchQuery, issueFilter, currentPage, refreshKey]);
 
   // FETCH LOGS
   useEffect(() => {
@@ -263,7 +264,7 @@ function AdminDashboardContent() {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isUserAdmin]);
 
 
   const handleDownloadReport = async () => {
@@ -302,7 +303,7 @@ function AdminDashboardContent() {
 
     } catch (error) {
       console.error("Failed to download report:", error);
-      alert("Failed to download the report.");
+      toast.error("Failed to download the report.");
     } finally {
       setIsDownloading(false);
     }
@@ -345,7 +346,7 @@ function AdminDashboardContent() {
 
     } catch (error: any) {
       console.error("Failed to download automation report:", error);
-      alert(error.message || "Failed to download the automation report.");
+      toast.error(error.message || "Failed to download the automation report.");
     } finally {
       setIsDownloadingAutomation(false);
     }
@@ -370,7 +371,7 @@ function AdminDashboardContent() {
         throw new Error(data.error || 'Failed to sync');
       }
 
-      alert(`Sync Complete! Fetched ${data.totalCloudflareDomains} domains from Cloudflare.\nDiscovered and added ${data.newDomainsAdded} brand new domains for scanning.`);
+      toast.success(`Sync Complete! Fetched ${data.totalCloudflareDomains} domains from Cloudflare.\nDiscovered and added ${data.newDomainsAdded} brand new domains for scanning.`);
 
       // Refresh the current view
       setCurrentPage(1);
@@ -379,7 +380,7 @@ function AdminDashboardContent() {
 
     } catch (error: any) {
       console.error("Sync failed:", error);
-      alert(error.message || "Failed to sync with Cloudflare.");
+      toast.error(error.message || "Failed to sync with Cloudflare.");
     } finally {
       setIsSyncing(false);
     }

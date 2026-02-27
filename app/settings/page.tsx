@@ -10,6 +10,7 @@ import { getUserSettings, saveUserSettings } from '@/app/settings/actions';
 import { getUserIntegrations, addIntegration, removeIntegration, IntegrationDTO } from '@/app/settings/integrations-actions';
 import { UserSettings, DEFAULT_SETTINGS } from '@/app/settings/types';
 import { isAdmin, getAdmins, addAdmin, removeAdmin, AdminUser } from '@/lib/roles';
+import { toast } from '@/lib/toast';
 
 export default function SettingsPage() {
     const [user, setUser] = useState<User | null | undefined>(undefined);
@@ -85,11 +86,11 @@ export default function SettingsPage() {
 
         if (res.success) {
             setInitialSettings(settings); // Changes are now saved, reset baseline
-            setSaveMessage({ text: 'Settings saved successfully!', isError: false });
+            toast.success('Settings saved successfully!');
             // Dispatch event to trigger navbar to update its display name
             window.dispatchEvent(new Event('user-settings-updated'));
         } else {
-            setSaveMessage({ text: 'Failed to save settings.', isError: true });
+            toast.error('Failed to save settings.');
         }
 
         setIsSaving(false);
@@ -130,17 +131,16 @@ export default function SettingsPage() {
         }
 
         if (successCount > 0) {
-            setSaveMessage({ text: `Successfully added ${successCount} admin(s).`, isError: false });
+            toast.success(`Successfully added ${successCount} admin(s).`);
             setNewAdminEmails([]);
             setAdminInputValue('');
-            const adminsList = await getAdmins();
+            const adminsList = await getAdmins(token);
             setAdminUsers(adminsList);
         } else if (lastError) {
-            setSaveMessage({ text: lastError, isError: true });
+            toast.error(lastError);
         }
 
         setIsManagingAdmins(false);
-        setTimeout(() => setSaveMessage({ text: '', isError: false }), 3000);
     };
 
     const handleEmailInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -167,21 +167,21 @@ export default function SettingsPage() {
     };
 
     const handleRemoveAdmin = async (emailToRemove: string) => {
-        if (!user?.email || !confirm(`Are you sure you want to revoke admin access for ${emailToRemove}?`)) return;
+        if (!user?.email) return;
+        if (!window.confirm(`Are you sure you want to revoke admin access for ${emailToRemove}?`)) return;
 
         setIsManagingAdmins(true);
         const token = await user.getIdToken();
         const res = await removeAdmin(emailToRemove, token);
 
         if (res.success) {
-            setSaveMessage({ text: 'Admin removed successfully.', isError: false });
-            const adminsList = await getAdmins();
+            toast.success('Admin removed successfully.');
+            const adminsList = await getAdmins(token);
             setAdminUsers(adminsList);
         } else {
-            setSaveMessage({ text: res.message || 'Failed to remove admin.', isError: true });
+            toast.error(res.message || 'Failed to remove admin.');
         }
         setIsManagingAdmins(false);
-        setTimeout(() => setSaveMessage({ text: '', isError: false }), 3000);
     };
 
     const handleAddIntegration = async (e: React.FormEvent) => {
@@ -193,34 +193,33 @@ export default function SettingsPage() {
         const res = await addIntegration(token, 'cloudflare', integrationLabel.trim(), integrationApiKey.trim());
 
         if (res.success) {
-            setSaveMessage({ text: 'Integration added successfully.', isError: false });
+            toast.success('Integration added successfully.');
             setIntegrationLabel('');
             setIntegrationApiKey('');
             const token = await user.getIdToken();
             const intsRes = await getUserIntegrations(token);
             if (intsRes.success && intsRes.integrations) setIntegrations(intsRes.integrations);
         } else {
-            setSaveMessage({ text: res.error || 'Failed to add integration.', isError: true });
+            toast.error(res.error || 'Failed to add integration.');
         }
         setIsManagingIntegrations(false);
-        setTimeout(() => setSaveMessage({ text: '', isError: false }), 3000);
     };
 
     const handleRemoveIntegration = async (id: string, label: string) => {
-        if (!user?.email || !confirm(`Are you sure you want to remove the integration "${label}"?`)) return;
+        if (!user?.email) return;
+        if (!window.confirm(`Are you sure you want to remove the integration "${label}"?`)) return;
 
         setIsManagingIntegrations(true);
         const token = await user.getIdToken();
         const res = await removeIntegration(token, id);
 
         if (res.success) {
-            setSaveMessage({ text: 'Integration removed.', isError: false });
+            toast.success('Integration removed.');
             setIntegrations(integrations.filter(i => i.id !== id));
         } else {
-            setSaveMessage({ text: res.error || 'Failed to remove integration.', isError: true });
+            toast.error(res.error || 'Failed to remove integration.');
         }
         setIsManagingIntegrations(false);
-        setTimeout(() => setSaveMessage({ text: '', isError: false }), 3000);
     };
 
     if (user === undefined || isLoading) {
@@ -608,7 +607,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-6 bg-[#1a1a1c]/90 backdrop-blur-xl border border-white/10 pl-6 pr-2 py-2 rounded-full shadow-[0_20px_40px_-15px_rgba(0,0,0,0.7)] pointer-events-auto">
                     <div className="flex items-center gap-2 min-w-[200px]">
                         {saveMessage.text ? (
-                            <span className={`text-[13px] font-medium flex items-center gap-1.5 ${saveMessage.isError ? "text-rose-400" : "text-blue-400"}`}>
+                            <span className={`text-[13px] font-medium flex items-center gap-1.5 ${saveMessage.isError ? "text-rose-400" : "text-emerald-400"}`}>
                                 {!saveMessage.isError && <CheckCircle2 className="w-4 h-4" />}
                                 {saveMessage.text}
                             </span>

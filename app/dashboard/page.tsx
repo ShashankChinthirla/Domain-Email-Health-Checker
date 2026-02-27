@@ -12,6 +12,7 @@ import { getDashboardMetrics, getPaginatedDomains, getPendingDomains } from '@/a
 import { getUserSettings } from '@/app/settings/actions';
 import { getUserIntegrations, IntegrationDTO } from '@/app/settings/integrations-actions';
 import { UserSettings, DEFAULT_SETTINGS } from '@/app/settings/types';
+import { toast } from 'sonner';
 
 interface LogEntry {
   id: string;
@@ -173,7 +174,7 @@ function UserDashboardContent() {
     }, 400);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localSearchQuery, searchQuery]);
+  }, [localSearchQuery, searchQuery, setSearchQuery]);
 
   // AUTO-REFRESH BACKGROUND POLLING
   useEffect(() => {
@@ -190,40 +191,10 @@ function UserDashboardContent() {
   // REPORT DOWNLOAD
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // --- PERSISTENT STATE WRAPPERS ---
-  const [isSyncing, setIsSyncingState] = useState(false);
-  const [isScanningNew, setIsScanningNewState] = useState(false);
-  const [scanProgress, setScanProgressState] = useState({ current: 0, total: 0 });
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setIsSyncingState(sessionStorage.getItem('isSyncing') === 'true');
-      setIsScanningNewState(sessionStorage.getItem('isScanningNew') === 'true');
-      const savedProgress = sessionStorage.getItem('scanProgress');
-      if (savedProgress) {
-        try { setScanProgressState(JSON.parse(savedProgress)); } catch (e) { }
-      }
-    }
-  }, []);
-
-  const setIsSyncing = (val: boolean) => {
-    setIsSyncingState(val);
-    if (typeof window !== 'undefined') sessionStorage.setItem('isSyncing', String(val));
-  };
-
-  const setIsScanningNew = (val: boolean) => {
-    setIsScanningNewState(val);
-    if (typeof window !== 'undefined') sessionStorage.setItem('isScanningNew', String(val));
-  };
-
-  const setScanProgress = (val: React.SetStateAction<{ current: number, total: number }>) => {
-    setScanProgressState(prev => {
-      const next = typeof val === 'function' ? (val as (prevState: { current: number, total: number }) => { current: number, total: number })(prev) : val;
-      if (typeof window !== 'undefined') sessionStorage.setItem('scanProgress', JSON.stringify(next));
-      return next;
-    });
-  };
-  // ---------------------------------
+  // --- EPHEMERAL STATE ---
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isScanningNew, setIsScanningNew] = useState(false);
+  const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
 
   // AUTH GUARD
   useEffect(() => {
@@ -308,7 +279,7 @@ function UserDashboardContent() {
       clearTimeout(timer);
     };
 
-  }, [user, searchQuery, issueFilter, integrationFilter, currentPage, refreshKey]);
+  }, [user, searchQuery, issueFilter, integrationFilter, currentPage, refreshKey, domains.length]);
 
   // FETCH LOGS
   useEffect(() => {
@@ -369,7 +340,7 @@ function UserDashboardContent() {
 
     } catch (error) {
       console.error("Failed to download report:", error);
-      alert("Failed to download the report.");
+      toast.error("Failed to download the report.");
     } finally {
       setIsDownloading(false);
     }
@@ -412,7 +383,7 @@ function UserDashboardContent() {
 
     } catch (error: unknown) {
       console.error("Failed to download automation report:", error);
-      alert(error instanceof Error ? error.message : "Failed to download the automation report.");
+      toast.error(error instanceof Error ? error.message : "Failed to download the automation report.");
     } finally {
       setIsDownloadingAutomation(false);
     }
@@ -437,7 +408,7 @@ function UserDashboardContent() {
         throw new Error(data.error || 'Failed to sync');
       }
 
-      alert(`Sync Complete! Fetched ${data.totalCloudflareDomains} domains from Cloudflare.\nDiscovered and added ${data.newDomainsAdded} brand new domains for scanning.`);
+      toast.success(`Sync Complete! Fetched ${data.totalCloudflareDomains} domains from Cloudflare.\nDiscovered and added ${data.newDomainsAdded} brand new domains for scanning.`);
 
       // Refresh the current view
       setCurrentPage(1);
@@ -446,7 +417,7 @@ function UserDashboardContent() {
 
     } catch (error: unknown) {
       console.error("Sync failed:", error);
-      alert(error instanceof Error ? error.message : "Failed to sync with Cloudflare.");
+      toast.error(error instanceof Error ? error.message : "Failed to sync with Cloudflare.");
     } finally {
       setIsSyncing(false);
     }
@@ -457,7 +428,7 @@ function UserDashboardContent() {
     if (!user?.email) return;
 
     if (metrics.pendingCount === 0) {
-      alert("No domains are pending a scan right now.");
+      toast.info("No domains are pending a scan right now.");
       return;
     }
 
@@ -480,7 +451,7 @@ function UserDashboardContent() {
       if (!response.ok) {
         setIsScanningNew(false);
         if (response.status === 401) {
-          alert(`Setup Required: ${data.error}\n\nPlease add your GitHub PAT to Vercel/local env.`);
+          toast.error(`Setup Required: ${data.error}\n\nPlease add your GitHub PAT to Vercel/local env.`);
           return;
         }
         throw new Error(data.error || 'Failed to trigger cloud scan');
@@ -489,7 +460,7 @@ function UserDashboardContent() {
       // Do nothing! The useEffect polling hook will now take over and track progress.
 
     } catch (err: any) {
-      alert(`Error scanning domains: ${err.message}`);
+      toast.error(`Error scanning domains: ${err.message}`);
       setIsScanningNew(false);
     }
   };
@@ -499,7 +470,7 @@ function UserDashboardContent() {
 
   const handleCancelScan = async () => {
     if (!user) return;
-    if (!confirm("Are you sure you want to send a kill signal to the distributed scanning matrix? This will stop all running runners.")) return;
+    if (!window.confirm("Are you sure you want to send a kill signal to the distributed scanning matrix? This will stop all running runners.")) return;
 
     setIsCancelling(true);
     try {
@@ -516,12 +487,12 @@ function UserDashboardContent() {
         throw new Error(data.error || 'Failed to cancel cloud scan');
       }
 
-      alert(`✅ Success: ${data.message}`);
+      toast.success(data.message);
       setIsScanningNew(false);
       setScanProgress({ current: 0, total: 0 });
       setRefreshKey(prev => prev + 1);
     } catch (err: any) {
-      alert(`Error cancelling scan: ${err.message}`);
+      toast.error(`Error cancelling scan: ${err.message}`);
     } finally {
       setIsCancelling(false);
     }
@@ -554,7 +525,7 @@ function UserDashboardContent() {
           if (res.pendingCount === 0) {
             setIsScanningNew(false);
             setScanProgress({ current: 0, total: 0 });
-            alert("✅ Cloud Scan Complete! All domains have been processed.");
+            toast.success("Cloud Scan Complete! All domains have been processed.");
           }
         }
       });
@@ -594,7 +565,7 @@ function UserDashboardContent() {
   const handleBulkRemediate = async () => {
     if (!user || selectedDomains.length === 0) return;
 
-    if (!confirm(`Are you sure you want to attempt auto-remediation for ${selectedDomains.length} domains?`)) return;
+    if (!window.confirm(`Are you sure you want to attempt auto-remediation for ${selectedDomains.length} domains?`)) return;
 
     setIsRemediatingBulk(true);
     let successCount = 0;
@@ -621,7 +592,7 @@ function UserDashboardContent() {
 
     setIsRemediatingBulk(false);
     setSelectedDomains([]);
-    alert(`Bulk Remediation Complete! Successfully fixed ${successCount} out of ${selectedDomains.length} domains.`);
+    toast.success(`Bulk Remediation Complete! Successfully fixed ${successCount} out of ${selectedDomains.length} domains.`);
     setRefreshKey(prev => prev + 1);
   };
 
@@ -646,13 +617,13 @@ function UserDashboardContent() {
         throw new Error(data.error || 'Failed to remediate domain');
       }
 
-      alert(`✅ Success: ${data.message}`);
+      toast.success(data.message);
 
       // Auto-refresh the dashboard to show the clean status
       setRefreshKey(prev => prev + 1);
     } catch (error: any) {
       console.error('Remediation error:', error);
-      alert(`❌ Error fixing ${domainName}: ${error.message}`);
+      toast.error(`Error fixing ${domainName}: ${error.message}`);
     } finally {
       setIsRemediating(null);
     }
