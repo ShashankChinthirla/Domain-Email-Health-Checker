@@ -106,8 +106,8 @@ export async function POST(request: NextRequest) {
         const payload = await request.json().catch(() => ({}));
         const { domainId } = payload;
 
-        if (!domainId) {
-            return NextResponse.json({ error: 'Missing domain ID' }, { status: 400 });
+        if (!domainId || !ObjectId.isValid(domainId)) {
+            return NextResponse.json({ error: 'Missing or invalid domain ID' }, { status: 400 });
         }
 
         const client = await clientPromise;
@@ -157,7 +157,10 @@ export async function POST(request: NextRequest) {
         const allTxtRecords: CloudflareDNSRecord[] = dnsData.result;
 
         const spfRecords = allTxtRecords.filter(r => r.content.includes('v=spf1'));
-        const dmarcRecords = allTxtRecords.filter(r => r.content.startsWith('v=DMARC1') || r.name.startsWith('_dmarc'));
+        const dmarcRecords = allTxtRecords.filter(r =>
+            (r.content.startsWith('v=DMARC1') || r.content.includes('v=DMARC1;')) &&
+            (r.name === '_dmarc' || r.name === `_dmarc.${domain}`)
+        );
 
         const rawSpf = spfRecords.length > 0 ? spfRecords[0].content : null;
         const rawDmarc = dmarcRecords.length > 0 ? dmarcRecords[0].content : null;
@@ -206,16 +209,25 @@ export async function POST(request: NextRequest) {
         // 5. Explicitly Back Up & Log to Database AND trigger a status change
         if (updatedSpf || updatedDmarc) {
             console.log(`💾 Committing original backups and metadata to MongoDB...`);
+
+            // Recalculate issues detected based on what was fixed
+            let newIssuesDetected = doc.issuesDetected > 0 ? doc.issuesDetected : 0;
+            if (updatedSpf && newIssuesDetected > 0) newIssuesDetected -= 1;
+            if (updatedDmarc && newIssuesDetected > 0) newIssuesDetected -= 1;
+
+            // Only set to Secure/Clean if all issues are resolved
+            const newStatus = newIssuesDetected === 0 ? 'Secure' : doc.status;
+            const newIssueCategory = newIssuesDetected === 0 ? 'Clean' : doc.issueCategory;
+
             await domainsCollection.updateOne({ _id: doc._id }, {
                 $set: {
                     originalSpfFull: rawSpf,
                     originalDmarcFull: rawDmarc,
                     automationDnsApplied: true,
                     updatedAt: new Date(),
-                    // Mark as fixed/secure optimistically 
-                    status: 'Secure',
-                    issuesDetected: doc.issuesDetected > 0 ? doc.issuesDetected - (updatedSpf ? 1 : 0) - (updatedDmarc ? 1 : 0) : 0,
-                    issueCategory: 'Clean'
+                    status: newStatus,
+                    issuesDetected: newIssuesDetected,
+                    issueCategory: newIssueCategory
                 }
             });
 

@@ -83,7 +83,8 @@ export async function getPaginatedDomains(token: string, query = "", issueFilter
         const filter: any = {};
 
         if (query) {
-            filter.domain = { $regex: query, $options: 'i' };
+            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            filter.domain = { $regex: escapedQuery, $options: 'i' };
         }
 
         if (issueFilter && issueFilter !== 'All') {

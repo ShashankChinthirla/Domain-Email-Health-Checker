@@ -131,8 +131,14 @@ export async function POST(request: NextRequest) {
 
         // Verify ownership using secure email from token
         const query: any = { ownerUserId: userEmail };
-        if (domainId) query._id = new ObjectId(domainId);
-        else query.domain = domain;
+        if (domainId) {
+            if (!ObjectId.isValid(domainId)) {
+                return NextResponse.json({ error: 'Invalid domain ID format' }, { status: 400 });
+            }
+            query._id = new ObjectId(domainId);
+        } else {
+            query.domain = domain;
+        }
 
         const existingDoc = await collection.findOne(query);
         if (!existingDoc) {

@@ -3,7 +3,7 @@
 import clientPromise from '@/lib/mongodb';
 
 // Define the root admin that should always have access, regardless of database state
-const ROOT_ADMIN = 'shashankshashankc39@gmail.com';
+const ROOT_ADMIN = process.env.ROOT_ADMIN_EMAIL || 'shashankshashankc39@gmail.com'; // Fallback for dev only, should be set in env
 
 export interface AdminUser {
     email: string;
@@ -42,14 +42,14 @@ export async function isAdmin(email: string | null | undefined): Promise<boolean
     }
 }
 
-export async function getAdmins(token?: string): Promise<AdminUser[]> {
+export async function getAdmins(token: string): Promise<AdminUser[]> {
     try {
-        if (token) {
-            const decoded = await verifyToken(token);
-            const isRequesterAdmin = await isAdmin(decoded.email);
-            if (!isRequesterAdmin) throw new Error("Unauthorized: Admin access required");
+        if (!token) {
+            throw new Error("Unauthorized: Token required");
         }
-
+        const decoded = await verifyToken(token);
+        const isRequesterAdmin = await isAdmin(decoded.email);
+        if (!isRequesterAdmin) throw new Error("Unauthorized: Admin access required");
         const client = await clientPromise;
         const db = client.db();
         const collection = db.collection<AdminUser>('admin_users');

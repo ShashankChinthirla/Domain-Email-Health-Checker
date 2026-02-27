@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import * as xlsx from 'xlsx';
 import { verifyAuth } from '@/lib/auth';
-import { isAdmin } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +30,8 @@ export async function GET(request: NextRequest) {
         const filter: Record<string, unknown> = { ownerUserId: userEmail };
 
         if (query) {
-            filter.domain = { $regex: query, $options: 'i' };
+            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            filter.domain = { $regex: escapedQuery, $options: 'i' };
         }
 
         if (issueFilter && issueFilter !== 'All') {
