@@ -2,11 +2,14 @@
 
 import clientPromise from '@/lib/mongodb';
 import { isAdmin } from '@/lib/roles';
+import { verifyToken } from '@/lib/auth';
 
-export async function getDashboardMetrics(email: string, integrationId?: string) {
+export async function getDashboardMetrics(token: string, integrationId?: string) {
     try {
+        const auth = await verifyToken(token);
+        const email = auth.email;
         if (!email) {
-            return { success: false, error: "Unauthorized access" };
+            return { success: false, error: "Unauthorized: Missing email in token" };
         }
 
         const client = await clientPromise;
@@ -60,10 +63,12 @@ export async function getDashboardMetrics(email: string, integrationId?: string)
     }
 }
 
-export async function getPaginatedDomains(email: string, query = "", issueFilter = "", integrationId = "All", page = 1, limit = 50) {
+export async function getPaginatedDomains(token: string, query = "", issueFilter = "", integrationId = "All", page = 1, limit = 50) {
     try {
+        const auth = await verifyToken(token);
+        const email = auth.email;
         if (!email) {
-            return { success: false, error: "Unauthorized access" };
+            return { success: false, error: "Unauthorized: Missing email in token" };
         }
 
         const client = await clientPromise;
@@ -172,10 +177,12 @@ export async function getPaginatedDomains(email: string, query = "", issueFilter
     }
 }
 
-export async function getPendingDomains(email: string) {
+export async function getPendingDomains(token: string) {
     try {
+        const auth = await verifyToken(token);
+        const email = auth.email;
         if (!email) {
-            return { success: false, error: "Unauthorized access" };
+            return { success: false, error: "Unauthorized: Missing email in token" };
         }
 
         const client = await clientPromise;

@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import * as xlsx from 'xlsx';
+import { verifyAuth } from '@/lib/auth';
 import { isAdmin } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
     try {
-        const searchParams = request.nextUrl.searchParams;
-        const email = searchParams.get('email');
-
-        if (!email) {
-            return new NextResponse('Unauthorized access', { status: 401 });
+        // 1. Verify Identity Server-Side via JWT
+        let userEmail: string;
+        try {
+            const auth = await verifyAuth(request);
+            userEmail = auth.email;
+        } catch (authError) {
+            console.error('Auth check failed for report download:', authError);
+            return new NextResponse('Unauthorized: Invalid or missing token', { status: 401 });
         }
+
+        const searchParams = request.nextUrl.searchParams;
+        const email = userEmail; // Derived securely from token
 
         const issueFilter = searchParams.get('filter') || 'All';
         const query = searchParams.get('query') || '';
@@ -21,7 +28,7 @@ export async function GET(request: NextRequest) {
         const db = client.db('vercel');
         const collection = db.collection('issue_domains');
 
-        const filter: Record<string, unknown> = { ownerUserId: email };
+        const filter: Record<string, unknown> = { ownerUserId: userEmail };
 
         if (query) {
             filter.domain = { $regex: query, $options: 'i' };

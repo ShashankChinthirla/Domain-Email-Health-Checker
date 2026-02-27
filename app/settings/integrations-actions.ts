@@ -4,6 +4,8 @@ import clientPromise from '@/lib/mongodb';
 import { encryptApiKey } from '@/lib/encryption';
 import { randomUUID } from 'crypto';
 
+import { verifyToken } from '@/lib/auth';
+
 export interface Integration {
     id: string;
     email: string; // The user who owns this integration
@@ -22,12 +24,15 @@ export interface IntegrationDTO {
     createdAt: Date;
 }
 
-export async function addIntegration(email: string, provider: 'cloudflare', label: string, apiKey: string) {
-    if (!email || !apiKey || !label) {
+export async function addIntegration(token: string, provider: 'cloudflare', label: string, apiKey: string) {
+    if (!token || !apiKey || !label) {
         return { success: false, error: "Missing required fields" };
     }
 
     try {
+        const decodedToken = await verifyToken(token);
+        const email = decodedToken.email;
+
         const client = await clientPromise;
         const db = client.db('vercel');
         const collection = db.collection<Integration>('integrations');
@@ -36,7 +41,7 @@ export async function addIntegration(email: string, provider: 'cloudflare', labe
 
         const newIntegration: Integration = {
             id: randomUUID(),
-            email,
+            email: email!,
             provider,
             label,
             encryptedApiKey,
@@ -53,12 +58,15 @@ export async function addIntegration(email: string, provider: 'cloudflare', labe
     }
 }
 
-export async function getUserIntegrations(email: string): Promise<{ success: boolean; integrations?: IntegrationDTO[]; error?: string }> {
-    if (!email) {
-        return { success: false, error: "Email required" };
+export async function getUserIntegrations(token: string): Promise<{ success: boolean; integrations?: IntegrationDTO[]; error?: string }> {
+    if (!token) {
+        return { success: false, error: "Token required" };
     }
 
     try {
+        const decodedToken = await verifyToken(token);
+        const email = decodedToken.email;
+
         const client = await clientPromise;
         const db = client.db('vercel');
         const collection = db.collection<Integration>('integrations');
@@ -80,12 +88,15 @@ export async function getUserIntegrations(email: string): Promise<{ success: boo
     }
 }
 
-export async function removeIntegration(email: string, integrationId: string) {
-    if (!email || !integrationId) {
+export async function removeIntegration(token: string, integrationId: string) {
+    if (!token || !integrationId) {
         return { success: false, error: "Missing required fields" };
     }
 
     try {
+        const decodedToken = await verifyToken(token);
+        const email = decodedToken.email;
+
         const client = await clientPromise;
         const db = client.db('vercel');
         const collection = db.collection<Integration>('integrations');

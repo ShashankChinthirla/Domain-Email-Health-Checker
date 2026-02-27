@@ -3,8 +3,13 @@
 import clientPromise from '@/lib/mongodb';
 import { isAdmin } from '@/lib/roles';
 
-export async function getAdminMetrics(email: string) {
+import { verifyToken } from '@/lib/auth';
+
+export async function getAdminMetrics(token: string) {
     try {
+        const decoded = await verifyToken(token);
+        const email = decoded.email;
+
         if (!(await isAdmin(email))) {
             return { success: false, error: "Unauthorized access" };
         }
@@ -62,8 +67,11 @@ export async function getAdminMetrics(email: string) {
     }
 }
 
-export async function getPaginatedDomains(email: string, query = "", issueFilter = "", page = 1, limit = 50) {
+export async function getPaginatedDomains(token: string, query = "", issueFilter = "", page = 1, limit = 50) {
     try {
+        const decoded = await verifyToken(token);
+        const email = decoded.email;
+
         if (!(await isAdmin(email))) {
             return { success: false, error: "Unauthorized access" };
         }

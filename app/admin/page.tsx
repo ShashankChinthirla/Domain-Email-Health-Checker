@@ -200,19 +200,23 @@ function AdminDashboardContent() {
   // FETCH METRICS & SETTINGS
   useEffect(() => {
     if (user && isUserAdmin) {
-      getUserSettings(user.email!).then(res => {
-        if (res.success && res.settings) setUserSettings(res.settings);
-      });
-      getAdminMetrics(user.email!).then(res => {
-        if (res.success) {
-          setMetrics({
-            totalDomains: res.totalDomains!,
-            secureCount: res.secureCount!,
-            atRiskCount: res.atRiskCount!,
-            addedToday: res.addedToday!
-          });
-        }
-      });
+      const fetchData = async () => {
+        const token = await user.getIdToken();
+        getUserSettings(token).then(res => {
+          if (res.success && res.settings) setUserSettings(res.settings);
+        });
+        getAdminMetrics(token).then(res => {
+          if (res.success) {
+            setMetrics({
+              totalDomains: res.totalDomains!,
+              secureCount: res.secureCount!,
+              atRiskCount: res.atRiskCount!,
+              addedToday: res.addedToday!
+            });
+          }
+        });
+      };
+      fetchData();
     }
   }, [user, isUserAdmin]);
 
@@ -223,7 +227,8 @@ function AdminDashboardContent() {
     let isMounted = true;
     const fetchDomains = async () => {
       setIsDomainsLoading(true);
-      const res = await getPaginatedDomains(user.email!, searchQuery, issueFilter, currentPage, itemsPerPage);
+      const token = await user.getIdToken();
+      const res = await getPaginatedDomains(token, searchQuery, issueFilter, currentPage, itemsPerPage);
       if (res.success && isMounted) {
         setDomains(res.domains as MongoDomain[]);
         setTotalPages(res.totalPages!);
@@ -262,14 +267,19 @@ function AdminDashboardContent() {
 
 
   const handleDownloadReport = async () => {
+    if (!user) return;
     setIsDownloading(true);
     try {
       const urlParams = new URLSearchParams();
-      if (user && user.email) urlParams.append('email', user.email);
       if (searchQuery) urlParams.append('query', searchQuery);
       if (issueFilter && issueFilter !== 'All') urlParams.append('filter', issueFilter);
 
-      const response = await fetch(`/api/download-report?${urlParams.toString()}`);
+      const token = await user.getIdToken();
+      const response = await fetch(`/api/download-report?${urlParams.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch report');
       }
@@ -301,13 +311,18 @@ function AdminDashboardContent() {
   const [isDownloadingAutomation, setIsDownloadingAutomation] = useState(false);
 
   const handleDownloadAutomationReport = async () => {
+    if (!user) return;
     setIsDownloadingAutomation(true);
     try {
       // The Python script saves reports directly to the 'reports' MongoDB collection
       const urlParams = new URLSearchParams();
-      if (user && user.email) urlParams.append('email', user.email);
+      const token = await user.getIdToken();
 
-      const response = await fetch(`/api/download-automation-report?${urlParams.toString()}`);
+      const response = await fetch(`/api/download-automation-report?${urlParams.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch automation report. It might not exist yet.');
       }
@@ -338,12 +353,17 @@ function AdminDashboardContent() {
 
 
   const handleSyncCloudflare = async () => {
+    if (!user) return;
     setIsSyncing(true);
     try {
+      const token = await user.getIdToken();
       const response = await fetch('/api/sync-cloudflare', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user?.email })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({})
       });
       const data = await response.json();
       if (!response.ok || !data.success) {

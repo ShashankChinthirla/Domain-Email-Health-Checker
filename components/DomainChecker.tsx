@@ -148,13 +148,15 @@ export function DomainChecker() {
         const cleanDomain = domain.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '').trim();
 
         try {
+            const token = await auth.currentUser?.getIdToken();
             const response = await fetch('/api/check-domain', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
-                    domain: cleanDomain,
-                    userId: auth.currentUser?.uid,
-                    userEmail: auth.currentUser?.email
+                    domain: cleanDomain
                 }),
                 signal // Pass abort signal
             });

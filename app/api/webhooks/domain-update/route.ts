@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+import { verifyWebhookSignature } from '@/lib/webhook-utils';
 
 export async function POST(request: NextRequest) {
     try {
-        // Authenticate the webhook request
-        const authHeader = request.headers.get('Authorization');
-        // You should set a WEBHOOK_SECRET in your .env.local
-        const EXPECTED_SECRET = process.env.WEBHOOK_SECRET;
+        const secret = process.env.WEBHOOK_SECRET;
+        if (!secret) {
+            console.error('FATAL: WEBHOOK_SECRET is not configured in environment.');
+            return NextResponse.json({ error: 'Webhook service misconfigured' }, { status: 500 });
+        }
 
-        if (authHeader !== `Bearer ${EXPECTED_SECRET}`) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        // 1. Verify HMAC Signature and Timestamp
+        const isValid = await verifyWebhookSignature(request, secret);
+        if (!isValid) {
+            return NextResponse.json({ error: 'Unauthorized: Invalid signature or expired timestamp' }, { status: 401 });
         }
 
         const body = await request.json();

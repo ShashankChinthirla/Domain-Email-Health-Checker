@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { runFullHealthCheck } from '@/lib/test-engine';
 import clientPromise from '@/lib/mongodb';
+import { verifyAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,14 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
     try {
+        // 1. Verify Identity Server-Side
+        try {
+            await verifyAuth(request);
+        } catch (authError) {
+            console.error('Auth check failed for check-domain:', authError);
+            return NextResponse.json({ error: 'Unauthorized: Invalid or missing token' }, { status: 401 });
+        }
+
         const body = await request.json();
         const { domain } = body;
 
@@ -30,8 +39,10 @@ export async function POST(request: Request) {
             const db = client.db("vercel");
             const collection = db.collection("dfyinfrasetups");
 
+            // Escape user-controlled input before passing to RegExp to prevent ReDoS injection
+            const escapedDomain = cleanDomain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const doc = await collection.findOne({
-                domain: { $regex: new RegExp(`^${cleanDomain}$`, "i") }
+                domain: { $regex: new RegExp(`^${escapedDomain}$`, "i") }
             });
 
             if (doc) {

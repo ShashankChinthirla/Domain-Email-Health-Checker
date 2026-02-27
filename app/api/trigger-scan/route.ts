@@ -1,8 +1,25 @@
 import { NextResponse } from 'next/server';
 import { spawn } from 'child_process';
+import { verifyAuth } from '@/lib/auth';
+import { isAdmin } from '@/lib/roles';
 
-export async function POST() {
+export async function POST(request: Request) {
     try {
+        // 1. Verify Identity and Admin Status Server-Side
+        try {
+            const auth = await verifyAuth(request);
+            const userEmail = auth.email;
+
+            // Strict Admin check for triggering scans
+            const adminStatus = await isAdmin(userEmail);
+            if (!adminStatus) {
+                console.warn(`Non-admin attempt to trigger scan: ${userEmail}`);
+                return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+            }
+        } catch (authError) {
+            console.error('Auth verification failed for scan trigger:', authError);
+            return NextResponse.json({ error: 'Unauthorized: Invalid or missing token' }, { status: 401 });
+        }
         // IF RUNNING LOCALLY, ALWAYS FALLBACK TO TERMINAL SO USER CAN WATCH IT LIVE
         if (process.env.NODE_ENV === 'development') {
             console.log("\n🚀 [LOCAL OVERRIDE] Triggering High-Speed Scanner in local terminal...");

@@ -1,11 +1,28 @@
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { verifyAuth } from '@/lib/auth';
+import { isAdmin } from '@/lib/roles';
 
 const execAsync = promisify(exec);
 
-export async function POST() {
+export async function POST(request: Request) {
     try {
+        // 1. Verify Identity and Admin Status Server-Side
+        try {
+            const auth = await verifyAuth(request);
+            const userEmail = auth.email;
+
+            // Strict Admin check for cancelling scans
+            const adminStatus = await isAdmin(userEmail);
+            if (!adminStatus) {
+                console.warn(`Non-admin attempt to cancel scan: ${userEmail}`);
+                return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+            }
+        } catch (authError) {
+            console.error('Auth verification failed for scan cancellation:', authError);
+            return NextResponse.json({ error: 'Unauthorized: Invalid or missing token' }, { status: 401 });
+        }
         if (process.env.NODE_ENV === 'development') {
             try {
                 // Kill local scan process. Depending on OS:

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { runFullHealthCheck } from '@/lib/test-engine';
 import { ObjectId } from 'mongodb';
+import { verifyAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -107,10 +108,20 @@ function calculateIssuesCount(report: any): number {
 export async function POST(request: NextRequest) {
 
     try {
-        const body = await request.json();
-        const { domainId, email, domain } = body;
+        // 1. Verify Identity Server-Side
+        let userEmail: string;
+        try {
+            const auth = await verifyAuth(request);
+            userEmail = auth.email;
+        } catch (authError) {
+            console.error('Auth check failed for scan-domain:', authError);
+            return NextResponse.json({ error: 'Unauthorized: Invalid or missing token' }, { status: 401 });
+        }
 
-        if (!email || (!domainId && !domain)) {
+        const body = await request.json();
+        const { domainId, domain } = body;
+
+        if (!domainId && !domain) {
             return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
         }
 
@@ -118,8 +129,8 @@ export async function POST(request: NextRequest) {
         const db = client.db('vercel');
         const collection = db.collection('issue_domains');
 
-        // Verify ownership
-        const query: any = { ownerUserId: email };
+        // Verify ownership using secure email from token
+        const query: any = { ownerUserId: userEmail };
         if (domainId) query._id = new ObjectId(domainId);
         else query.domain = domain;
 

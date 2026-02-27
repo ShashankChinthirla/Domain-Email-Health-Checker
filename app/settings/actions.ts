@@ -2,10 +2,15 @@
 
 import clientPromise from '@/lib/mongodb';
 
+import { verifyToken } from '@/lib/auth';
 import { UserSettings, DEFAULT_SETTINGS } from './types';
 
-export async function getUserSettings(email: string) {
+export async function getUserSettings(token: string) {
     try {
+        if (!token) return { success: false, error: "Unauthorized" };
+        const decodedToken = await verifyToken(token);
+        const email = decodedToken.email;
+
         const client = await clientPromise;
         const db = client.db();
         const collection = db.collection('user_settings');
@@ -33,15 +38,19 @@ export async function getUserSettings(email: string) {
     }
 }
 
-export async function saveUserSettings(email: string, settings: UserSettings) {
+export async function saveUserSettings(token: string, settings: UserSettings) {
     try {
+        if (!token) return { success: false, error: "Unauthorized" };
+        const decodedToken = await verifyToken(token);
+        const email = decodedToken.email;
+
         const client = await clientPromise;
         const db = client.db();
         const collection = db.collection('user_settings');
 
         await collection.updateOne(
             { email },
-            { $set: { ...settings, updatedAt: new Date() } },
+            { $set: { ...settings, email, updatedAt: new Date() } },
             { upsert: true }
         );
 

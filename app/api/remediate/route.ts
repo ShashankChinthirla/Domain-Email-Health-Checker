@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { decryptApiKey } from '@/lib/encryption';
 import { ObjectId } from 'mongodb';
+import { verifyAuth } from '@/lib/auth';
 
 
 // Types exactly matching the Cloudflare JSON response
@@ -92,11 +93,21 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
     try {
-        const payload = await request.json().catch(() => ({}));
-        const { domainId, email } = payload;
+        // 1. Verify Identity Server-Side
+        let userEmail: string;
+        try {
+            const auth = await verifyAuth(request);
+            userEmail = auth.email;
+        } catch (authError) {
+            console.error('Auth check failed for remediate API:', authError);
+            return NextResponse.json({ error: 'Unauthorized: Invalid or missing token' }, { status: 401 });
+        }
 
-        if (!email || !domainId) {
-            return NextResponse.json({ error: 'Missing email or domain ID' }, { status: 400 });
+        const payload = await request.json().catch(() => ({}));
+        const { domainId } = payload;
+
+        if (!domainId) {
+            return NextResponse.json({ error: 'Missing domain ID' }, { status: 400 });
         }
 
         const client = await clientPromise;
@@ -104,8 +115,8 @@ export async function POST(request: NextRequest) {
         const domainsCollection = db.collection('issue_domains');
         const integrationsCollection = db.collection('integrations');
 
-        // Verify the user owns the domain and fetch it
-        const doc = await domainsCollection.findOne({ _id: new ObjectId(domainId), ownerUserId: email });
+        // Verify ownership using secure email from token
+        const doc = await domainsCollection.findOne({ _id: new ObjectId(domainId), ownerUserId: userEmail });
 
         if (!doc) {
             return NextResponse.json({ error: 'Domain not found or unauthorized.' }, { status: 404 });
@@ -115,10 +126,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No integration linked to this domain.' }, { status: 400 });
         }
 
-        // Fetch the integration to get the API key
+        // Fetch the integration to get the API key using the correct UUID reference
         const integration = await integrationsCollection.findOne({
-            _id: new ObjectId(doc.integrationId),
-            email: email
+            id: doc.integrationId,
+            email: userEmail
         });
 
         if (!integration) {

@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { decryptApiKey } from '@/lib/encryption';
+import { verifyAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
     try {
-        const payload = await request.json().catch(() => ({}));
-        const email = payload.email;
-
-        if (!email) {
-            return NextResponse.json({ error: 'Unauthorized access' }, { status: 401 });
+        // 1. Verify Identity Server-Side
+        let userEmail: string;
+        try {
+            const auth = await verifyAuth(request);
+            userEmail = auth.email;
+        } catch (authError) {
+            console.error('Auth check failed for Cloudflare sync:', authError);
+            return NextResponse.json({ error: 'Unauthorized: Invalid or missing token' }, { status: 401 });
         }
+
+        const email = userEmail;
 
         const client = await clientPromise;
         const db = client.db('vercel');

@@ -44,29 +44,31 @@ export default function SettingsPage() {
             }
             setUser(currentUser);
 
-            if (currentUser.email) {
+            try {
+                const token = await currentUser.getIdToken();
                 const adminStatus = await isAdmin(currentUser.email);
                 setIsUserAdmin(adminStatus);
 
-                const res = await getUserSettings(currentUser.email);
+                const res = await getUserSettings(token);
                 if (res.success && res.settings) {
                     setSettings(res.settings);
                     setInitialSettings(res.settings);
                 }
 
                 if (adminStatus) {
-                    const adminsList = await getAdmins();
+                    const adminsList = await getAdmins(token);
                     setAdminUsers(adminsList);
                 }
 
-                const intsRes = await getUserIntegrations(currentUser.email);
+                const intsRes = await getUserIntegrations(token);
                 if (intsRes.success && intsRes.integrations) {
                     setIntegrations(intsRes.integrations);
                 }
-            } else {
-                setIsUserAdmin(false);
+            } catch (err) {
+                console.error("Auth state error:", err);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         });
 
         return () => unsubscribe();
@@ -78,7 +80,8 @@ export default function SettingsPage() {
         setIsSaving(true);
         setSaveMessage({ text: '', isError: false });
 
-        const res = await saveUserSettings(user.email, settings);
+        const token = await user.getIdToken();
+        const res = await saveUserSettings(token, settings);
 
         if (res.success) {
             setInitialSettings(settings); // Changes are now saved, reset baseline
@@ -116,8 +119,9 @@ export default function SettingsPage() {
         let successCount = 0;
         let lastError = '';
 
+        const token = await user.getIdToken();
         for (const email of emailsToProcess) {
-            const res = await addAdmin(email, user.email);
+            const res = await addAdmin(email, token);
             if (res.success) {
                 successCount++;
             } else {
@@ -166,7 +170,8 @@ export default function SettingsPage() {
         if (!user?.email || !confirm(`Are you sure you want to revoke admin access for ${emailToRemove}?`)) return;
 
         setIsManagingAdmins(true);
-        const res = await removeAdmin(emailToRemove, user.email);
+        const token = await user.getIdToken();
+        const res = await removeAdmin(emailToRemove, token);
 
         if (res.success) {
             setSaveMessage({ text: 'Admin removed successfully.', isError: false });
@@ -184,13 +189,15 @@ export default function SettingsPage() {
         if (!user?.email || !integrationLabel.trim() || !integrationApiKey.trim()) return;
 
         setIsManagingIntegrations(true);
-        const res = await addIntegration(user.email, 'cloudflare', integrationLabel.trim(), integrationApiKey.trim());
+        const token = await user.getIdToken();
+        const res = await addIntegration(token, 'cloudflare', integrationLabel.trim(), integrationApiKey.trim());
 
         if (res.success) {
             setSaveMessage({ text: 'Integration added successfully.', isError: false });
             setIntegrationLabel('');
             setIntegrationApiKey('');
-            const intsRes = await getUserIntegrations(user.email);
+            const token = await user.getIdToken();
+            const intsRes = await getUserIntegrations(token);
             if (intsRes.success && intsRes.integrations) setIntegrations(intsRes.integrations);
         } else {
             setSaveMessage({ text: res.error || 'Failed to add integration.', isError: true });
@@ -203,7 +210,8 @@ export default function SettingsPage() {
         if (!user?.email || !confirm(`Are you sure you want to remove the integration "${label}"?`)) return;
 
         setIsManagingIntegrations(true);
-        const res = await removeIntegration(user.email, id);
+        const token = await user.getIdToken();
+        const res = await removeIntegration(token, id);
 
         if (res.success) {
             setSaveMessage({ text: 'Integration removed.', isError: false });
@@ -548,8 +556,8 @@ export default function SettingsPage() {
                                                         key={option.id}
                                                         onClick={() => setSettings({ ...settings, emailClient: option.id as 'default' | 'gmail' | 'outlook' })}
                                                         className={`group relative text-left flex flex-col p-4 rounded-xl border transition-all duration-200 outline-none cursor-pointer ${isActive
-                                                                ? 'bg-[#1a1a1c] border-white/20 ring-1 ring-white/10'
-                                                                : 'bg-[#111] border-white/10 hover:bg-[#1a1a1c] hover:border-white/20'
+                                                            ? 'bg-[#1a1a1c] border-white/20 ring-1 ring-white/10'
+                                                            : 'bg-[#111] border-white/10 hover:bg-[#1a1a1c] hover:border-white/20'
                                                             }`}
                                                     >
                                                         <span className={`text-[14px] font-medium transition-colors pr-6 ${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-white'}`}>

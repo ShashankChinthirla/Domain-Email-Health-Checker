@@ -11,6 +11,8 @@ export interface AdminUser {
     createdAt: Date;
 }
 
+import { verifyToken } from '@/lib/auth';
+
 /**
  * Checks if an email has admin privileges.
  * Automatically seeds the ROOT_ADMIN if the collection is empty.
@@ -26,37 +28,36 @@ export async function isAdmin(email: string | null | undefined): Promise<boolean
         const db = client.db();
         const collection = db.collection<AdminUser>('admin_users');
 
-        // Check if database is empty - if so, seed ROOT_ADMIN and maybe paybalc06@gmail.com
+        // Check if database is empty - if so, seed ROOT_ADMIN
         const count = await collection.countDocuments();
         if (count === 0) {
-            await collection.insertMany([
-                { email: ROOT_ADMIN, addedBy: 'system', createdAt: new Date() },
-                { email: 'paybalc06@gmail.com', addedBy: 'system', createdAt: new Date() }
-            ]);
+            await collection.insertOne({ email: ROOT_ADMIN, addedBy: 'system', createdAt: new Date() });
         }
 
         const adminDoc = await collection.findOne({ email });
         return !!adminDoc;
     } catch (error) {
         console.error("Error checking admin role:", error);
-        // Fail closed for security, but allow root admin to always login even if Mongo is down
         return false;
     }
 }
 
-export async function getAdmins(): Promise<AdminUser[]> {
+export async function getAdmins(token?: string): Promise<AdminUser[]> {
     try {
+        if (token) {
+            const decoded = await verifyToken(token);
+            const isRequesterAdmin = await isAdmin(decoded.email);
+            if (!isRequesterAdmin) throw new Error("Unauthorized: Admin access required");
+        }
+
         const client = await clientPromise;
         const db = client.db();
         const collection = db.collection<AdminUser>('admin_users');
 
-        // Ensure root admins exist
+        // Ensure root admin exists
         const count = await collection.countDocuments();
         if (count === 0) {
-            await collection.insertMany([
-                { email: ROOT_ADMIN, addedBy: 'system', createdAt: new Date() },
-                { email: 'paybalc06@gmail.com', addedBy: 'system', createdAt: new Date() }
-            ]);
+            await collection.insertOne({ email: ROOT_ADMIN, addedBy: 'system', createdAt: new Date() });
         }
 
         const result = await collection.find().sort({ createdAt: -1 }).toArray();
@@ -71,10 +72,19 @@ export async function getAdmins(): Promise<AdminUser[]> {
     }
 }
 
-export async function addAdmin(email: string, addedBy: string): Promise<{ success: boolean; message: string }> {
-    if (!email) return { success: false, message: 'Email required' };
+export async function addAdmin(email: string, requesterToken: string): Promise<{ success: boolean; message: string }> {
+    if (!email || !requesterToken) return { success: false, message: 'Email and token required' };
 
     try {
+        const decoded = await verifyToken(requesterToken);
+        const requesterEmail = decoded.email;
+
+        // Authorize: Requester must be an admin
+        const isRequesterAdmin = await isAdmin(requesterEmail);
+        if (!isRequesterAdmin) {
+            return { success: false, message: 'Unauthorized: Admin access required' };
+        }
+
         const client = await clientPromise;
         const db = client.db();
         const collection = db.collection<AdminUser>('admin_users');
@@ -87,29 +97,40 @@ export async function addAdmin(email: string, addedBy: string): Promise<{ succes
 
         await collection.insertOne({
             email,
-            addedBy,
+            addedBy: requesterEmail!,
             createdAt: new Date()
         });
 
         return { success: true, message: 'Admin added successfully' };
     } catch (error) {
         console.error("Error adding admin:", error);
-        return { success: false, message: 'Database error' };
+        return { success: false, message: 'Authorization or database error' };
     }
 }
 
-export async function removeAdmin(emailToRemove: string, requestingUserEmail: string): Promise<{ success: boolean; message: string }> {
-    // Prevent removing the root developer
-    if (emailToRemove === ROOT_ADMIN) {
-        return { success: false, message: 'Cannot remove the root administrator' };
-    }
-
-    // Prevent removing yourself (avoids accidental lockouts)
-    if (emailToRemove === requestingUserEmail) {
-        return { success: false, message: 'You cannot remove your own admin access' };
-    }
+export async function removeAdmin(emailToRemove: string, requesterToken: string): Promise<{ success: boolean; message: string }> {
+    if (!emailToRemove || !requesterToken) return { success: false, message: 'Missing parameters' };
 
     try {
+        const decoded = await verifyToken(requesterToken);
+        const requesterEmail = decoded.email;
+
+        // Authorize: Requester must be an admin
+        const isRequesterAdmin = await isAdmin(requesterEmail);
+        if (!isRequesterAdmin) {
+            return { success: false, message: 'Unauthorized: Admin access required' };
+        }
+
+        // Prevent removing the root developer
+        if (emailToRemove === ROOT_ADMIN) {
+            return { success: false, message: 'Cannot remove the root administrator' };
+        }
+
+        // Prevent removing yourself (avoids accidental lockouts)
+        if (emailToRemove === requesterEmail) {
+            return { success: false, message: 'You cannot remove your own admin access' };
+        }
+
         const client = await clientPromise;
         const db = client.db();
         const collection = db.collection<AdminUser>('admin_users');
@@ -123,6 +144,6 @@ export async function removeAdmin(emailToRemove: string, requestingUserEmail: st
         }
     } catch (error) {
         console.error("Error removing admin:", error);
-        return { success: false, message: 'Database error' };
+        return { success: false, message: 'Authorization or database error' };
     }
 }

@@ -1,17 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { isAdmin } from '@/lib/roles';
+import { verifyAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
     try {
-        const searchParams = request.nextUrl.searchParams;
-        const email = searchParams.get('email');
+        // 1. Verify Identity and Admin Status Server-Side
+        let userEmail: string;
+        try {
+            const auth = await verifyAuth(request);
+            userEmail = auth.email;
 
-        if (!email) {
-            return new NextResponse('Unauthorized access', { status: 401 });
+            // Strict Admin check for system-wide reports
+            const adminStatus = await isAdmin(userEmail);
+            if (!adminStatus) {
+                console.warn(`Non-admin attempt to download automation report: ${userEmail}`);
+                return new NextResponse('Forbidden: Admin access required', { status: 403 });
+            }
+        } catch (authError) {
+            console.error('Auth verification failed for automation report:', authError);
+            return new NextResponse('Unauthorized: Invalid or missing token', { status: 401 });
         }
+
+        const searchParams = request.nextUrl.searchParams;
+        const email = userEmail; // Verified and and Admin check passed
 
         const client = await clientPromise;
         const db = client.db('vercel');
