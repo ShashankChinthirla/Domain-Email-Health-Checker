@@ -3,7 +3,8 @@ import { promises as dnsPromises, MxRecord, SoaRecord, CaaRecord } from 'dns';
 // Force high-capacity public resolvers if we are running locally/in background worker
 // Vercel serverless functions sometimes block outbound port 53 to custom IPs, so we fallback
 // to default system DNS if process.env.VERCEL is present.
-if (!process.env.VERCEL) {
+// We also fallback to system DNS on GitHub Actions because Azure/AWS internal resolvers have dramatically higher throughput without triggering Cloudflare UDP rate limits.
+if (!process.env.VERCEL && !process.env.GITHUB_ACTIONS && !process.env.CI) {
     try {
         dnsPromises.setServers([
             '1.1.1.1', // Cloudflare Primary
@@ -15,6 +16,8 @@ if (!process.env.VERCEL) {
     } catch (e) {
         console.warn('[DNS] Failed to set public resolvers, using system defaults', e);
     }
+} else {
+    console.log('[DNS] Using internal system resolvers (Vercel/GitHub Actions/CI detected)');
 }
 
 // Cache structure: Key -> { promise, timestamp, data }
@@ -29,8 +32,8 @@ const cache = new Map<string, CacheEntry<any>>();
 const TTL = 10 * 60 * 1000; // 10 Minutes
 
 // Global DNS Concurrency Control
-// Increased to 1500 to prevent queuing delays that cause timeouts on massive background bulk scans
-const MAX_CONCURRENT_QUERIES = 1500;
+// Lowered from 1500 to 250 to prevent packet-drop issues and UDP socket starvation on GitHub Actions instances.
+const MAX_CONCURRENT_QUERIES = 250;
 let runningQueries = 0;
 const queryQueue: ((value: void | PromiseLike<void>) => void)[] = [];
 

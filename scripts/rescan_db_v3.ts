@@ -271,10 +271,12 @@ async function runRescan() {
                 }
             });
 
-            // If the pool is getting small and all remaining items are retries, enforce a backoff so we don't rapid-fire the same broken domains
-            if (domainPool.length > 0 && domainPool.length <= BATCH_SIZE) {
-                const jitter = Math.random() * 2000;
-                await delay(3000 + jitter);
+            // If the pool consists entirely of retries, we have exhausted our fresh domains.
+            // We must enforce a backoff penalty so we don't rapid-fire the same broken domains back immediately.
+            const allRetries = domainPool.length > 0 && domainPool.every(d => retryTracker[d._id.toString()] > 0);
+            if (allRetries || (domainPool.length > 0 && domainPool.length <= BATCH_SIZE)) {
+                const jitter = Math.random() * 3000;
+                await delay(5000 + jitter);
             }
 
             // Print progress periodically based on processed count vs initial target
