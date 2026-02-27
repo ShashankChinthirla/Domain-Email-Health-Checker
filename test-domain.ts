@@ -1,7 +1,7 @@
 import { runFullHealthCheck } from "./lib/test-engine";
 
 async function testAccuracy() {
-    const domain = "accountabilityincpro.com";
+    const domain = "1791financialserviceshq.com";
     console.log(`Testing: ${domain}`);
     const res = await runFullHealthCheck(domain);
 

@@ -125,7 +125,7 @@ function generateIssuesObject(report: any) {
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 async function processDomainWithRetry(doc: any, collection: any): Promise<any> {
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 5; // Increased to give Vercel/UDP limits more room to breathe
     let attempt = 0;
 
     while (attempt < MAX_RETRIES) {
@@ -137,7 +137,8 @@ async function processDomainWithRetry(doc: any, collection: any): Promise<any> {
             if (newCategory === 'SYSTEM_TIMEOUT') {
                 console.log(`[TIMEOUT - RETRYING ${attempt}/${MAX_RETRIES}] ${doc.domain}`);
                 if (attempt < MAX_RETRIES) {
-                    await delay(5000 * attempt); // exponential backoff
+                    const jitter = Math.random() * 5000;
+                    await delay((attempt * 4000) + jitter); // exponential backoff with jitter
                     continue;
                 } else {
                     return { success: false, domain: doc.domain, error: 'TIMEOUT_AFTER_RETRIES' };
@@ -168,7 +169,8 @@ async function processDomainWithRetry(doc: any, collection: any): Promise<any> {
         } catch (error) {
             console.error(`[ERROR - RETRYING ${attempt}/${MAX_RETRIES}] ${doc.domain}:`, error);
             if (attempt < MAX_RETRIES) {
-                await delay(5000 * attempt);
+                const jitter = Math.random() * 5000;
+                await delay((attempt * 4000) + jitter);
             } else {
                 return { success: false, domain: doc.domain, error };
             }
@@ -232,7 +234,7 @@ async function runRescan() {
 
         let absoluteIndex = skipCount;
         let processed = 0;
-        const BATCH_SIZE = 20; // Reduced to prevent network saturation — each domain runs 30+ DNS/HTTP checks concurrently
+        const BATCH_SIZE = 10; // Halved to 10 to heavily reduce parallel DNS saturation (300 requests/sec instead of 600)
         let batch = [];
 
         while (await cursor.hasNext()) {

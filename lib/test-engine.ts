@@ -198,8 +198,8 @@ async function runDNSTests(domain: string): Promise<TestResult[]> {
                         try {
                             await dns.resolve6(primaryMx);
                             t.push({ name: 'Primary MX Resolution', status: 'Pass', info: `${primaryMx} -> IPv6`, reason: 'Primary MX host resolves to an IPv6 address.', recommendation: 'Ensure IPv4 is also supported for maximum compatibility.' });
-                        } catch {
-                            t.push({ name: 'Primary MX Resolution', status: 'Error', info: `Could not resolve ${primaryMx}`, reason: 'The mail server hostname does not exist.', recommendation: 'Fix the MX record or create the missing A record for the mail server.' });
+                        } catch (err: any) {
+                            t.push({ name: 'Primary MX Resolution', status: 'Error', info: `DNS Error: ${err.message || 'Lookup Failed'}`, reason: 'The mail server hostname could not be resolved.', recommendation: 'Fix the MX record or create the missing A record for the mail server.' });
                         }
                     }
                 }
@@ -237,8 +237,12 @@ async function runDNSTests(domain: string): Promise<TestResult[]> {
                 } else {
                     t.push({ name: 'NS Glue Validity', status: 'Warning', info: 'Unresolvable NS', reason: 'One or more nameservers could not be resolved.', recommendation: 'Check your nameserver hostnames.' });
                 }
-            } catch {
-                t.push({ name: 'NS Record Published', status: 'Error', info: 'Missing', reason: 'No Nameservers found.', recommendation: 'Configure nameservers at your registrar.' });
+            } catch (error: any) {
+                if (error.code === 'ENOTFOUND' || error.code === 'ENODATA' || error.code === 'NOTFOUND') {
+                    t.push({ name: 'NS Record Published', status: 'Error', info: 'Missing', reason: 'No Nameservers found.', recommendation: 'Configure nameservers at your registrar.' });
+                } else {
+                    t.push({ name: 'NS Record Published', status: 'Warning', info: 'DNS Error', reason: `DNS lookup failed: ${error.message}`, recommendation: 'Try again later.' });
+                }
             }
             return t;
         })(),
@@ -280,8 +284,12 @@ async function runDNSTests(domain: string): Promise<TestResult[]> {
                 }
 
                 t.push({ name: 'SOA Minimum TTL', status: 'Pass', info: `${soa.minttl}`, reason: 'Minimum TTL is defined.', recommendation: 'No action needed.' });
-            } catch {
-                t.push({ name: 'SOA Record Published', status: 'Warning', info: 'Missing', reason: 'SOA record not found.', recommendation: 'Ensure your zone file is valid.' });
+            } catch (error: any) {
+                if (error.code === 'ENOTFOUND' || error.code === 'ENODATA' || error.code === 'NOTFOUND') {
+                    t.push({ name: 'SOA Record Published', status: 'Warning', info: 'Missing', reason: 'SOA record not found.', recommendation: 'Ensure your zone file is valid.' });
+                } else {
+                    t.push({ name: 'SOA Record Published', status: 'Warning', info: 'DNS Error', reason: `DNS lookup failed: ${error.message}`, recommendation: 'Try again later.' });
+                }
             }
             return t;
         })(),
