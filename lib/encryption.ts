@@ -2,21 +2,21 @@ import crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 
-// 1. Enforce strict key existence (No insecure defaults in Prod)
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
-
-if (!ENCRYPTION_KEY) {
-    throw new Error('FATAL: ENCRYPTION_KEY environment variable is missing.');
-}
-
-const keyBuffer = Buffer.from(ENCRYPTION_KEY, 'utf-8');
-
-// 2. Enforce strict 32-byte key definition (No weak derivation/padding)
-if (keyBuffer.length !== 32) {
-    throw new Error(`FATAL: ENCRYPTION_KEY must be exactly 32 bytes. Current length is ${keyBuffer.length} bytes.`);
+// Helper to get encryption key securely at runtime
+function getEncryptionKey(): Buffer {
+    const key = process.env.ENCRYPTION_KEY;
+    if (!key) {
+        throw new Error('FATAL: ENCRYPTION_KEY environment variable is missing.');
+    }
+    const keyBuffer = Buffer.from(key, 'utf-8');
+    if (keyBuffer.length !== 32) {
+        throw new Error(`FATAL: ENCRYPTION_KEY must be exactly 32 bytes. Current length is ${keyBuffer.length} bytes.`);
+    }
+    return keyBuffer;
 }
 
 export function encryptApiKey(text: string): string {
+    const keyBuffer = getEncryptionKey();
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(ALGORITHM, keyBuffer, iv);
 
@@ -53,6 +53,7 @@ export function decryptApiKey(encryptedString: string): string {
 
         const iv = Buffer.from(ivHex, 'hex');
         const authTag = Buffer.from(authTagHex, 'hex');
+        const keyBuffer = getEncryptionKey();
 
         const decipher = crypto.createDecipheriv(ALGORITHM, keyBuffer, iv);
         decipher.setAuthTag(authTag);
