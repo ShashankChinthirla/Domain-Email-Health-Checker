@@ -1,14 +1,16 @@
 'use client';
 
-import { Search, Loader2, LogIn, LogOut, User as UserIcon, ChevronDown, ShieldCheck, Settings, LifeBuoy, ChevronRight } from 'lucide-react';
+import { Trophy, ArrowLeft, LogIn, LogOut, Loader2, Sparkles, ChevronRight, Settings, ShieldCheck, Search, LifeBuoy } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { auth } from '@/lib/firebase';
 import { User, signOut } from 'firebase/auth';
 import { LoginModal } from '@/components/LoginModal';
 import { cn } from '@/lib/utils';
+import { NotificationDropdown } from './NotificationDropdown';
 import { useOnClickOutside } from '@/lib/hooks';
 import { isAdmin } from '@/lib/roles';
 import { getUserSettings } from '@/app/settings/actions';
+import { usePathname } from 'next/navigation';
 
 interface NavbarProps {
     searchState?: {
@@ -19,6 +21,7 @@ interface NavbarProps {
     };
 }
 export function Navbar({ searchState }: NavbarProps) {
+    const pathname = usePathname();
     const [user, setUser] = useState<User | null>(null);
     const [isUserAdmin, setIsUserAdmin] = useState(false);
     const [dbDisplayName, setDbDisplayName] = useState('');
@@ -29,23 +32,30 @@ export function Navbar({ searchState }: NavbarProps) {
     useOnClickOutside(dropdownRef as React.RefObject<HTMLElement>, () => setShowDropdown(false));
 
     useEffect(() => {
-        const fetchUserData = async (email: string) => {
-            const adminStatus = await isAdmin(email);
+        const fetchUserData = async (currentUser: User) => {
+            if (!currentUser.email) return;
+            const adminStatus = await isAdmin(currentUser.email);
             setIsUserAdmin(adminStatus);
 
             // Fetch user settings for display name
-            const res = await getUserSettings(email);
-            if (res.success && res.settings && res.settings.displayName) {
-                setDbDisplayName(res.settings.displayName);
-            } else {
+            try {
+                const token = await currentUser.getIdToken();
+                const res = await getUserSettings(token);
+                if (res.success && res.settings && res.settings.displayName) {
+                    setDbDisplayName(res.settings.displayName);
+                } else {
+                    setDbDisplayName('');
+                }
+            } catch (err) {
+                console.error("Error fetching user settings in Navbar:", err);
                 setDbDisplayName('');
             }
         };
 
         const unsubscribe = auth.onAuthStateChanged(async (u) => {
             setUser(u);
-            if (u?.email) {
-                await fetchUserData(u.email);
+            if (u) {
+                await fetchUserData(u);
             } else {
                 setIsUserAdmin(false);
                 setDbDisplayName('');
@@ -54,8 +64,8 @@ export function Navbar({ searchState }: NavbarProps) {
 
         // Listen for internal settings updates
         const handleSettingsUpdate = () => {
-            if (user?.email) {
-                fetchUserData(user.email);
+            if (user) {
+                fetchUserData(user);
             }
         };
         window.addEventListener('user-settings-updated', handleSettingsUpdate);
@@ -116,6 +126,8 @@ export function Navbar({ searchState }: NavbarProps) {
 
                         {/* Auth Section */}
                         <div className="flex items-center gap-4 h-8 shrink-0">
+                            {user && (pathname === '/dashboard' || pathname === '/settings') && <NotificationDropdown />}
+
                             {user ? (
                                 <div className="relative" ref={dropdownRef}>
                                     <button

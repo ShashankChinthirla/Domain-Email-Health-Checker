@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
         // 1. Verify Identity Server-Side
         let userEmail: string;
         try {
+            console.log('Sync API: Verifying auth...');
             const auth = await verifyAuth(request);
             userEmail = auth.email;
         } catch (authError) {
@@ -20,6 +21,7 @@ export async function POST(request: NextRequest) {
         const email = userEmail;
 
         const client = await clientPromise;
+        console.log('Sync API: MongoDB connected');
         const db = client.db('vercel');
         const domainsCollection = db.collection('issue_domains');
         const integrationsCollection = db.collection('integrations');
@@ -37,8 +39,10 @@ export async function POST(request: NextRequest) {
         let totalCloudflareDomainsCount = 0;
         const allNewDomainsAdded: string[] = [];
 
-        // 1. Process all integrations in parallel
-        await Promise.all(integrations.map(async (integration) => {
+        // 1. Process all integrations sequentially to avoid rate limits and memory spikes
+        console.log(`Sync API: Processing ${integrations.length} integrations...`);
+        for (const integration of integrations) {
+            console.log(`Sync API: Processing integration [${integration.label}]...`);
             const encryptedKey = integration.encryptedApiKey;
             const apiToken = await decryptApiKey(encryptedKey);
 
@@ -50,9 +54,11 @@ export async function POST(request: NextRequest) {
             const allCloudflareDomains: string[] = [];
 
             // 1a. Fetch Page 1 to get Total Pages
+            console.log(`Sync API: Fetching Cloudflare Page 1...`);
             const firstPageRes = await fetch(`https://api.cloudflare.com/client/v4/zones?per_page=500&page=1`, {
                 headers: { 'Authorization': `Bearer ${apiToken}`, 'Content-Type': 'application/json' }
             });
+            console.log(`Sync API: Fetched Cloudflare Page 1. Res status: ${firstPageRes.status}`);
             const firstPageData = await firstPageRes.json();
 
             if (!firstPageRes.ok || !firstPageData.success) {
@@ -84,18 +90,23 @@ export async function POST(request: NextRequest) {
 
             totalCloudflareDomainsCount += allCloudflareDomains.length;
 
-            if (allCloudflareDomains.length === 0) return;
+            if (allCloudflareDomains.length === 0) continue;
 
-            // 2. Fetch existing from MongoDB for THIS user
-            const existingDocs = await domainsCollection.find(
-                { domain: { $in: allCloudflareDomains }, ownerUserId: email },
-                { projection: { domain: 1 } }
-            ).toArray();
-
-            const existingDomainsSet = new Set(existingDocs.map(doc => doc.domain));
+            // 2. Fetch existing from MongoDB for THIS user, in chunks of 1000
+            const existingDomainsSet = new Set<string>();
+            const CHUNK_SIZE = 1000;
+            for (let i = 0; i < allCloudflareDomains.length; i += CHUNK_SIZE) {
+                const chunk = allCloudflareDomains.slice(i, i + CHUNK_SIZE);
+                const existingDocs = await domainsCollection.find(
+                    { domain: { $in: chunk }, ownerUserId: email },
+                    { projection: { domain: 1 } }
+                ).toArray();
+                existingDocs.forEach(doc => existingDomainsSet.add(doc.domain));
+            }
 
             // 3. Find Delta
             const newDomains = allCloudflareDomains.filter(domain => !existingDomainsSet.has(domain));
+            console.log(`Sync API: Found ${newDomains.length} new domains to insert.`);
 
             // 4. Insert new domains
             if (newDomains.length > 0) {
@@ -114,12 +125,17 @@ export async function POST(request: NextRequest) {
                     createdAt: new Date()
                 }));
 
-                await domainsCollection.insertMany(docsToInsert, { ordered: false });
+                for (let i = 0; i < docsToInsert.length; i += CHUNK_SIZE) {
+                    const chunk = docsToInsert.slice(i, i + CHUNK_SIZE);
+                    await domainsCollection.insertMany(chunk, { ordered: false });
+                }
+
                 totalNewInserted += newDomains.length;
                 allNewDomainsAdded.push(...newDomains);
             }
-        }));
+        }
 
+        console.log(`Sync API: Returning success. Total: ${totalCloudflareDomainsCount}, New: ${totalNewInserted}`);
         return NextResponse.json({
             success: true,
             message: 'Cloudflare sync complete',

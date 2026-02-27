@@ -217,7 +217,7 @@ async function runRescan() {
         let absoluteIndex = skipCount;
         let processed = 0;
         const BATCH_SIZE = 10;
-        let domainPool: any[] = [];
+        const domainPool: any[] = [];
 
         // Track retry attempts specifically for each domain ID
         const retryTracker: Record<string, number> = {};
@@ -264,6 +264,13 @@ async function runRescan() {
                     } else {
                         processed++;
                         console.log(`[SKIPPED - FAILED AFTER ${MAX_RETRIES} RETRIES] ${r.domain} (Timeout Error)`);
+                        // Force update DB so it doesn't stay stuck in 'Needs_Scan' forever
+                        if (originalDoc) {
+                            collection.updateOne(
+                                { _id: originalDoc._id },
+                                { $set: { issueCategory: 'Unreachable', status: 'At Risk', issuesDetected: 1, issues: { system: "Domain unreachable or DNS failing consistently" } } }
+                            ).catch((err: any) => console.error("Failed to mark unreachable target:", err));
+                        }
                     }
                 } else {
                     processed++;
@@ -274,7 +281,7 @@ async function runRescan() {
             // If the pool consists entirely of retries, we have exhausted our fresh domains.
             // We must enforce a backoff penalty so we don't rapid-fire the same broken domains back immediately.
             const allRetries = domainPool.length > 0 && domainPool.every(d => retryTracker[d._id.toString()] > 0);
-            if (allRetries || (domainPool.length > 0 && domainPool.length <= BATCH_SIZE)) {
+            if (allRetries) {
                 const jitter = Math.random() * 3000;
                 await delay(5000 + jitter);
             }
