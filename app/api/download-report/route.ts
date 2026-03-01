@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
             Status: d.status,
             'Issue Category': d.issueCategory || 'Clean',
             'Issues Detected': d.issuesDetected,
-            'User': d.user || 'Unassigned',
+            'User': d.ownerUserId || 'Unassigned',
             'SPF Record': d.updatedSpfFull || d.spfFull || 'N/A',
             'DMARC Record': d.updatedDmarcFull || d.dmarcFull || 'N/A',
             'Last Scanned': d.timestamp ? new Date(d.timestamp).toISOString() : 'Unknown'

@@ -34,22 +34,19 @@ export function NotificationDropdown() {
         // Less than a minute
         if (diff < 60000) return 'Just now';
 
-        // Less than an hour
-        if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+        // Display full date and time for absolute clarity: e.g. "Mar 1, 2026 • 2:30 PM"
+        const dateOptions: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+        const timeOptions: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
 
-        // Less than a day
-        if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-
-        // Otherwise date
-        return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        return `${date.toLocaleDateString(undefined, dateOptions)} • ${date.toLocaleTimeString(undefined, timeOptions)}`;
     };
 
     return (
-        <div className="relative" ref={dropdownRef}>
+        <div className="relative flex items-center h-[42px]" ref={dropdownRef}>
             <button
                 onClick={toggleOpen}
                 className={cn(
-                    "relative flex items-center justify-center p-1 transition-all duration-200 cursor-pointer mt-0.5",
+                    "relative flex items-center justify-center p-1 transition-all duration-200 cursor-pointer",
                     isOpen ? "text-white" : "text-white/70 hover:text-white"
                 )}
             >
@@ -62,7 +59,7 @@ export function NotificationDropdown() {
             </button>
 
             {isOpen && (
-                <div className="absolute -right-6 top-[calc(100%+20px)] w-80 bg-[#111111] backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_40px_-5px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 origin-top-right ring-1 ring-white/5 z-50 flex flex-col max-h-[400px]">
+                <div className="absolute -right-[82px] top-[calc(100%+20px)] w-80 bg-[#111111] backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_16px_40px_-5px_rgba(0,0,0,0.8)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 origin-top-right ring-1 ring-white/5 z-50 flex flex-col max-h-[400px]">
 
                     {/* Header */}
                     <div className="p-4 flex items-center justify-between shrink-0 bg-[#111111]">
@@ -118,11 +115,11 @@ export function NotificationDropdown() {
                                                 {notif.message}
                                             </p>
                                             {notif.description && (
-                                                <p className="text-xs text-white/50 mt-1 leading-snug line-clamp-2">
+                                                <p className="text-[12px] text-white/50 mt-1 mb-1 leading-snug">
                                                     {notif.description}
                                                 </p>
                                             )}
-                                            <p className="text-[10px] text-white/30 font-medium tracking-wider uppercase mt-2">
+                                            <p className="text-[10px] text-white/40 font-medium tracking-wide uppercase mt-1">
                                                 {formatTimestamp(notif.timestamp)}
                                             </p>
                                         </div>

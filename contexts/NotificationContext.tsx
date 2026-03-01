@@ -9,13 +9,14 @@ export interface AppNotification {
     type: NotificationType;
     message: string;
     description?: string;
+    context?: string;
     timestamp: number;
     read: boolean;
 }
 
 interface NotificationContextProps {
     notifications: AppNotification[];
-    addNotification: (type: NotificationType, message: string, description?: string) => void;
+    addNotification: (type: NotificationType, message: string, description?: string, context?: string) => void;
     markAsRead: (id: string) => void;
     markAllAsRead: () => void;
     clearAll: () => void;
@@ -48,12 +49,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
     }, [notifications]);
 
-    const addNotification = (type: NotificationType, message: string, description?: string) => {
+    const addNotification = (type: NotificationType, message: string, description?: string, context?: string) => {
         const newNotif: AppNotification = {
             id: crypto.randomUUID(),
             type,
             message,
             description,
+            context,
             timestamp: Date.now(),
             read: false,
         };
@@ -64,8 +66,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     // Listen to global events so the toast wrapper can add notifications outside of React components
     useEffect(() => {
         const handleGlobalEvent = (e: Event) => {
-            const customEvent = e as CustomEvent<{ type: NotificationType; message: string; description?: string }>;
-            addNotification(customEvent.detail.type, customEvent.detail.message, customEvent.detail.description);
+            const customEvent = e as CustomEvent<{ type: NotificationType; message: string; description?: string; context?: string }>;
+            addNotification(customEvent.detail.type, customEvent.detail.message, customEvent.detail.description, customEvent.detail.context);
         };
 
         window.addEventListener('app-notification', handleGlobalEvent);

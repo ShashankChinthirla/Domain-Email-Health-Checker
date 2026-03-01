@@ -31,9 +31,9 @@ async function fetchCfApi(endpoint: string, apiToken: string, options: any = {})
     return data;
 }
 
-function generateUpdatedSpf(rawSpf: string | null): string {
+function generateUpdatedSpf(rawSpf: string | null): string | null {
     if (!rawSpf || rawSpf.toLowerCase() === 'missing') {
-        return "v=spf1 a mx ~all";
+        return null;
     }
     // Replace hard fails or neutral with soft fail
     return rawSpf.replace(/-all|\?all/g, '~all');
@@ -47,9 +47,9 @@ function ensureMailto(val: string): string {
         .join(', ');
 }
 
-function generateUpdatedDmarc(rawDmarc: string | null, domain: string): string {
+function generateUpdatedDmarc(rawDmarc: string | null, domain: string): string | null {
     if (!rawDmarc || rawDmarc.toLowerCase() === 'missing') {
-        rawDmarc = null;
+        return null; // DO NOT generate a new record from scratch if completely missing
     }
 
     let isAlreadyStrict = false;
@@ -156,11 +156,15 @@ export async function POST(request: NextRequest) {
         const dnsData = await fetchCfApi(`/zones/${zoneId}/dns_records?type=TXT`, apiToken);
         const allTxtRecords: CloudflareDNSRecord[] = dnsData.result;
 
-        const spfRecords = allTxtRecords.filter(r => r.content.includes('v=spf1'));
+        const spfRecords = allTxtRecords.filter(r => r.content.includes('v=spf1') && r.name === domain);
         const dmarcRecords = allTxtRecords.filter(r =>
             (r.content.startsWith('v=DMARC1') || r.content.includes('v=DMARC1;')) &&
             (r.name === '_dmarc' || r.name === `_dmarc.${domain}`)
         );
+
+        if (spfRecords.length > 1 || dmarcRecords.length > 1) {
+            return NextResponse.json({ error: `Cannot safely auto-remediate ${domain} because it has multiple conflicting SPF or DMARC records.` }, { status: 400 });
+        }
 
         const rawSpf = spfRecords.length > 0 ? spfRecords[0].content : null;
         const rawDmarc = dmarcRecords.length > 0 ? dmarcRecords[0].content : null;
@@ -215,9 +219,11 @@ export async function POST(request: NextRequest) {
             if (updatedSpf && newIssuesDetected > 0) newIssuesDetected -= 1;
             if (updatedDmarc && newIssuesDetected > 0) newIssuesDetected -= 1;
 
-            // Only set to Secure/Clean if all issues are resolved
-            const newStatus = newIssuesDetected === 0 ? 'Secure' : doc.status;
-            const newIssueCategory = newIssuesDetected === 0 ? 'Clean' : doc.issueCategory;
+            // Immediately mark it as needing a fresh scan so the Python Matrix can cleanly assign
+            // any remaining HTTP/Blacklist issues without keeping stale 'No_SPF' flags.
+            const newIssuesObj = { ...(doc.issues || {}) };
+            if (updatedSpf) delete newIssuesObj.spf;
+            if (updatedDmarc) delete newIssuesObj.dmarc;
 
             await domainsCollection.updateOne({ _id: doc._id }, {
                 $set: {
@@ -225,9 +231,10 @@ export async function POST(request: NextRequest) {
                     originalDmarcFull: rawDmarc,
                     automationDnsApplied: true,
                     updatedAt: new Date(),
-                    status: newStatus,
+                    status: 'At Risk', // Temporarily keep At Risk until the scanner proves it's Secure
+                    issueCategory: 'Needs_Scan', // Force the matrix to pick it up immediately
                     issuesDetected: newIssuesDetected,
-                    issueCategory: newIssueCategory
+                    issues: newIssuesObj
                 }
             });
 

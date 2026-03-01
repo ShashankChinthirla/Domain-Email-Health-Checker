@@ -8,7 +8,7 @@ import { Navbar } from '@/components/Navbar';
 import { cn } from '@/lib/utils';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { getDashboardMetrics, getPaginatedDomains, getPendingDomains } from '@/app/dashboard/actions';
+import { getDashboardMetrics, getPaginatedDomains, getPendingDomains, getFixableDomains } from '@/app/dashboard/actions';
 import { getUserSettings } from '@/app/settings/actions';
 import { getUserIntegrations, IntegrationDTO } from '@/app/settings/integrations-actions';
 import { UserSettings, DEFAULT_SETTINGS } from '@/app/settings/types';
@@ -54,8 +54,8 @@ function UserDashboardContent() {
   const pathname = usePathname();
 
   // TABS
-  const activeTabParam = searchParams.get('tab') as 'overview' | 'actions' | 'fleet' | 'automation' | null;
-  const validTabs: ('overview' | 'actions' | 'fleet' | 'automation')[] = ['overview', 'actions', 'fleet', 'automation'];
+  const activeTabParam = searchParams.get('tab') as 'overview' | 'actions' | 'bulk' | 'fleet' | 'automation' | null;
+  const validTabs: ('overview' | 'actions' | 'bulk' | 'fleet' | 'automation')[] = ['overview', 'actions', 'bulk', 'fleet', 'automation'];
   const activeTab = activeTabParam && validTabs.includes(activeTabParam) ? activeTabParam : 'overview';
 
   // DOMAINS STATE (MongoDB)
@@ -144,6 +144,7 @@ function UserDashboardContent() {
   };
 
   const [domains, setDomains] = useState<MongoDomain[]>([]);
+  const [bulkDomains, setBulkDomains] = useState<MongoDomain[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [totalDomainsMatching, setTotalDomainsMatching] = useState(0);
   const [isDomainsLoading, setIsDomainsLoading] = useState(true);
@@ -164,7 +165,7 @@ function UserDashboardContent() {
     router.push(`${pathname}${queryStr}`, { scroll: false });
   };
 
-  const setActiveTab = (tab: 'overview' | 'actions' | 'fleet' | 'automation') => updateUrlParams({ tab });
+  const setActiveTab = (tab: 'overview' | 'actions' | 'bulk' | 'fleet' | 'automation') => updateUrlParams({ tab });
   const setSearchQuery = (q: string) => updateUrlParams({ q: q || null, page: null });
   const setIssueFilter = (f: string | ((prev: string) => string)) => {
     const newFilter = typeof f === 'function' ? f(issueFilter) : f;
@@ -300,6 +301,27 @@ function UserDashboardContent() {
     };
 
   }, [user, searchQuery, issueFilter, integrationFilter, currentPage, refreshKey, domains.length]);
+
+  // FETCH BULK FIXABLE DOMAINS
+  useEffect(() => {
+    if (!user) return;
+
+    let isMounted = true;
+    const fetchBulkDomains = async () => {
+      try {
+        const token = await user.getIdToken();
+        const res = await getFixableDomains(token);
+        if (res.success && isMounted) {
+          setBulkDomains(res.domains as MongoDomain[]);
+        }
+      } catch (error) {
+        console.error("Error fetching bulk domains:", error);
+      }
+    };
+
+    fetchBulkDomains();
+    return () => { isMounted = false; };
+  }, [user, refreshKey]);
 
   // FETCH LOGS
   useEffect(() => {
@@ -553,6 +575,7 @@ function UserDashboardContent() {
 
   const [isRemediating, setIsRemediating] = useState<string | null>(null);
   const [isRemediatingBulk, setIsRemediatingBulk] = useState(false);
+  const [bulkRemediateProgress, setBulkRemediateProgress] = useState({ total: 0, completed: 0, success: 0, failed: 0 });
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
 
   const isDomainFixable = (domain: MongoDomain) => {
@@ -566,7 +589,7 @@ function UserDashboardContent() {
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      const fixable = domains.filter(d => isDomainFixable(d)).map(d => d._id);
+      const fixable = bulkDomains.map(d => d._id);
       setSelectedDomains(fixable);
     } else {
       setSelectedDomains([]);
@@ -585,32 +608,52 @@ function UserDashboardContent() {
     if (!window.confirm(`Are you sure you want to attempt auto-remediation for ${selectedDomains.length} domains?`)) return;
 
     setIsRemediatingBulk(true);
+    setBulkRemediateProgress({ total: selectedDomains.length, completed: 0, success: 0, failed: 0 });
     let successCount = 0;
 
-    // Process in parallel with a small concurrency limit for safety, but Promise.all is fine for MVP
-    await Promise.allSettled(
-      selectedDomains.map(async (domainId) => {
-        try {
-          const token = await user.getIdToken();
-          const response = await fetch('/api/remediate', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ domainId }),
-          });
-          if (response.ok) successCount++;
-        } catch (e) {
-          console.error(`Failed to remediate ${domainId}`, e);
-        }
-      })
-    );
+    // Process in chunks of 5 parallel requests to avoid overwhelming the Next.js API or reaching browser socket limits
+    const chunkSize = 5;
+    for (let i = 0; i < selectedDomains.length; i += chunkSize) {
+      const chunk = selectedDomains.slice(i, i + chunkSize);
+
+      await Promise.allSettled(
+        chunk.map(async (domainId) => {
+          try {
+            const token = await user.getIdToken();
+            const response = await fetch('/api/remediate', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({ domainId }),
+            });
+
+            if (response.ok) {
+              setBulkRemediateProgress(prev => ({ ...prev, completed: prev.completed + 1, success: prev.success + 1 }));
+              successCount++;
+            } else {
+              setBulkRemediateProgress(prev => ({ ...prev, completed: prev.completed + 1, failed: prev.failed + 1 }));
+            }
+          } catch (e) {
+            console.error(`Failed to remediate ${domainId}`, e);
+            setBulkRemediateProgress(prev => ({ ...prev, completed: prev.completed + 1, failed: prev.failed + 1 }));
+          }
+        })
+      );
+    }
 
     setIsRemediatingBulk(false);
     setSelectedDomains([]);
-    toast.success(`Bulk Remediation Complete! Successfully fixed ${successCount} out of ${selectedDomains.length} domains.`);
-    setRefreshKey(prev => prev + 1);
+    toast.success(`Bulk Remediation Complete! Successfully processed ${successCount} out of ${selectedDomains.length} targets.`);
+
+    // Automatically trigger a background scan pipeline for the newly fixed domains
+    if (successCount > 0) {
+      toast.info("Triggering background scan matrix to verify new DNS configurations...");
+      handleScanNewDomains();
+    } else {
+      setRefreshKey(prev => prev + 1);
+    }
   };
 
   const handleRemediate = async (domainId: string, domainName: string) => {
@@ -637,7 +680,8 @@ function UserDashboardContent() {
       toast.success(data.message);
 
       // Auto-refresh the dashboard to show the clean status
-      setRefreshKey(prev => prev + 1);
+      toast.info("Triggering background scan matrix to verify new DNS configurations...");
+      handleScanNewDomains();
     } catch (error: any) {
       console.error('Remediation error:', error);
       toast.error(`Error fixing ${domainName}: ${error.message}`);
@@ -708,6 +752,15 @@ function UserDashboardContent() {
             )}
           >
             <Zap className="w-4 h-4 shrink-0" /> Action Center
+          </button>
+          <button
+            onClick={() => setActiveTab('bulk')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-3 text-sm transition-all border-b-2 cursor-pointer whitespace-nowrap",
+              activeTab === 'bulk' ? "text-white border-white font-medium" : "text-white/50 border-transparent hover:text-white"
+            )}
+          >
+            <ShieldCheck className="w-4 h-4 shrink-0" /> Bulk Remediate
           </button>
           <button
             onClick={() => setActiveTab('fleet')}
@@ -838,17 +891,6 @@ function UserDashboardContent() {
                   </button>
 
                   <button
-                    onClick={() => updateUrlParams({ action: 'fix' })}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all",
-                      selectedAction === 'fix' ? "bg-white/10 text-white font-medium" : "text-white/50 hover:bg-white/5 hover:text-white"
-                    )}
-                  >
-                    <ShieldCheck className="w-4 h-4 shrink-0" />
-                    <span>Bulk Remediate</span>
-                  </button>
-
-                  <button
                     onClick={() => updateUrlParams({ action: 'export' })}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all",
@@ -923,30 +965,6 @@ function UserDashboardContent() {
                     </div>
                   )}
 
-                  {/* DETAIL VIEW: FIX */}
-                  {selectedAction === 'fix' && (
-                    <div className="flex flex-col text-left">
-                      <h3 className="text-2xl font-semibold text-white mb-2 tracking-tight">Automated Bulk Remediation</h3>
-                      <p className="text-white/60 text-sm mb-8">
-                        Deploy correct SPF and DMARC policies into the DNS zones for all <span className="text-white font-medium">{selectedDomains.length}</span> selected domains.
-                      </p>
-
-                      <div className="w-full border border-white/10 bg-white/[0.02] rounded-lg p-5 mb-8">
-                        <p className="text-xs font-mono text-white/50 mb-2">TARGET PAYLOAD</p>
-                        <p className="text-sm font-mono text-white/80">SPF: v=spf1 include:_spf.google.com ~all</p>
-                        <p className="text-sm font-mono text-white/80 mt-1">DMARC: v=DMARC1; p=reject; pct=100; ...</p>
-                      </div>
-
-                      <button
-                        onClick={handleBulkRemediate}
-                        disabled={isRemediatingBulk || selectedDomains.length === 0}
-                        className="h-10 px-4 bg-white hover:bg-zinc-200 text-black text-sm font-medium rounded-md transition-all disabled:opacity-50 cursor-pointer self-start"
-                      >
-                        {isRemediatingBulk ? 'Deploying...' : `Apply Fix (${selectedDomains.length} targets)`}
-                      </button>
-                    </div>
-                  )}
-
                   {/* DETAIL VIEW: EXPORT */}
                   {selectedAction === 'export' && (
                     <div className="flex flex-col text-left">
@@ -966,6 +984,149 @@ function UserDashboardContent() {
                 </div>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2.5: BULK REMEDIATE */}
+        {activeTab === 'bulk' && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="border border-white/10 rounded-xl overflow-hidden bg-[#09090b] p-8 md:p-12">
+              <div className="max-w-4xl mx-auto flex flex-col text-left">
+                <h3 className="text-2xl font-semibold text-white mb-2 tracking-tight">Automated Bulk Remediation</h3>
+                <p className="text-white/60 text-sm mb-6">
+                  Deploy correct SPF and DMARC policies into the DNS zones for domains with fixable configuration issues. This tool operates completely isolated from the rest of the dashboard.
+                </p>
+
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="bg-white/[0.03] border border-white/10 rounded-lg p-6 flex-1 max-w-[250px]">
+                    <p className="text-white/40 text-[11px] uppercase tracking-wider mb-2 font-semibold">Total Eligible</p>
+                    <p className="text-4xl font-bold text-white tracking-tight">{bulkDomains.length}</p>
+                  </div>
+                  <div className="bg-white/[0.03] border border-blue-500/20 rounded-lg p-6 flex-1 max-w-[250px] relative overflow-hidden">
+                    <div className="absolute inset-0 bg-blue-500/5 pointer-events-none" />
+                    <p className="text-blue-400/60 text-[11px] uppercase tracking-wider mb-2 font-semibold relative z-10">Selected Targets</p>
+                    <p className="text-4xl font-bold text-blue-400 tracking-tight relative z-10">{selectedDomains.length}</p>
+                  </div>
+                </div>
+
+                <div className="w-full bg-[#161618] border border-white/10 rounded-lg mb-8 overflow-hidden flex flex-col min-h-[400px]">
+                  <div className="bg-white/5 px-6 py-4 flex items-center justify-between border-b border-white/10 shrink-0">
+                    <span className="text-sm font-medium text-white/90">Eligible Domains ({bulkDomains.length})</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedDomains(bulkDomains.map(d => d._id))}
+                        className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm font-medium border border-blue-500/20 rounded transition-all cursor-pointer"
+                      >
+                        Select All
+                      </button>
+                      <button
+                        onClick={() => setSelectedDomains([])}
+                        className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white border border-white/10 rounded transition-all text-sm font-medium cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="overflow-y-auto max-h-[600px]">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 bg-[#161618] border-b border-white/5 z-10">
+                        <tr>
+                          <th className="p-4 pl-6 w-12 text-white/40 font-medium text-[11px] uppercase">
+                            <input
+                              type="checkbox"
+                              className="rounded border-none bg-white/10 checked:bg-blue-500 focus:ring-0 cursor-pointer"
+                              checked={bulkDomains.length > 0 && selectedDomains.length === bulkDomains.length}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedDomains(bulkDomains.map(d => d._id));
+                                else setSelectedDomains([]);
+                              }}
+                            />
+                          </th>
+                          <th className="p-4 text-[11px] uppercase font-medium text-white/40 tracking-wider">Domain</th>
+                          <th className="p-4 text-[11px] uppercase font-medium text-white/40 tracking-wider">Detected Issues</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {bulkDomains.map(domain => (
+                          <tr key={domain._id} className="hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => handleSelectDomain(domain._id)}>
+                            <td className="p-4 pl-6 w-12" onClick={e => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                className="rounded border-none bg-white/10 checked:bg-blue-500 focus:ring-0 cursor-pointer"
+                                checked={selectedDomains.includes(domain._id)}
+                                onChange={() => handleSelectDomain(domain._id)}
+                              />
+                            </td>
+                            <td className="p-4 text-[14px] text-white/90 font-medium">{domain.domain}</td>
+                            <td className="p-4 shrink-0">
+                              <div className="flex flex-col gap-1.5">
+                                {domain.issues?.spf && (
+                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 w-fit">SPF: {domain.issues.spf}</span>
+                                )}
+                                {domain.issues?.dmarc && (
+                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 w-fit">DMARC: {domain.issues.dmarc}</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {bulkDomains.length === 0 && (
+                          <tr>
+                            <td colSpan={3} className="p-16 text-center text-white/30 text-base">No fixable domains currently available.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {isRemediatingBulk ? (
+                  <div className="flex flex-col gap-4 w-full max-w-md bg-white/[0.03] border border-white/10 p-6 rounded-lg mb-8">
+                    <div className="flex items-center justify-between text-base font-medium text-white/90">
+                      <span>Remediating Domains...</span>
+                      <span className="text-blue-400">
+                        {Math.round((bulkRemediateProgress.completed / Math.max(1, bulkRemediateProgress.total)) * 100)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
+                      <div
+                        className="bg-blue-500 h-full transition-all duration-300 rounded-full"
+                        style={{ width: `${(bulkRemediateProgress.completed / Math.max(1, bulkRemediateProgress.total)) * 100}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-sm mt-1">
+                      <span className="text-white/60">
+                        {bulkRemediateProgress.completed} / {bulkRemediateProgress.total} completed
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-emerald-400 font-medium tracking-wide">✓ {bulkRemediateProgress.success}</span>
+                        {bulkRemediateProgress.failed > 0 && (
+                          <span className="text-rose-400 font-medium tracking-wide">✗ {bulkRemediateProgress.failed}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 mb-8">
+                    <button
+                      onClick={handleBulkRemediate}
+                      disabled={selectedDomains.length === 0}
+                      className="h-12 px-8 bg-blue-600 hover:bg-blue-500 text-white text-base font-bold rounded-lg transition-all disabled:opacity-50 cursor-pointer shrink-0 shadow-xl shadow-blue-500/20"
+                    >
+                      Execute Bulk Fix ({selectedDomains.length} targets)
+                    </button>
+                  </div>
+                )}
+
+                <div className="w-full border border-white/10 bg-[#161618] rounded-xl p-6">
+                  <p className="text-xs font-bold tracking-wider text-white/40 mb-3 uppercase flex items-center gap-2">
+                    <ShieldCheck size={16} className="text-blue-400" /> Target Safety Payload
+                  </p>
+                  <p className="text-base font-mono text-emerald-400/90 tracking-wide">SPF: v=spf1 include:_spf.google.com ~all</p>
+                  <p className="text-base font-mono text-blue-400/90 tracking-wide mt-2">DMARC: v=DMARC1; p=reject; pct=100; ...</p>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1047,29 +1208,17 @@ function UserDashboardContent() {
                   <table className="w-full text-left border-collapse">
                     <thead className="bg-[#fbfeff] border-b border-gray-200">
                       <tr className="text-[11px] text-gray-500 font-semibold tracking-wider uppercase">
-                        <th className="p-4 pl-6 w-12">
-                          <input
-                            type="checkbox"
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                            onChange={handleSelectAll}
-                            checked={
-                              domains.filter(d => d.issuesDetected > 0 && d.status !== 'Secure').length > 0 &&
-                              selectedDomains.length === domains.filter(d => d.issuesDetected > 0 && d.status !== 'Secure').length
-                            }
-                          />
-                        </th>
-                        <th className="p-4">Domain Name</th>
-                        <th className="p-4">Owner</th>
-                        <th className="p-4">Status</th>
-                        <th className="p-4">Issues Detected</th>
-                        <th className="p-4 hidden md:table-cell">Last Scanned</th>
-                        <th className="p-4 w-32 text-center">Actions</th>
+                        <th className="p-4 pl-6 text-left">Domain Name</th>
+                        <th className="p-4 text-left">Owner</th>
+                        <th className="p-4 text-left">Status</th>
+                        <th className="p-4 text-left">Issues Detected</th>
+                        <th className="p-4 hidden md:table-cell text-left">Last Scanned</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white relative">
                       {isDomainsLoading && (
                         <tr>
-                          <td colSpan={7} className="p-24 text-center bg-white/50 backdrop-blur-sm relative z-10">
+                          <td colSpan={5} className="p-24 text-center bg-white/50 backdrop-blur-sm relative z-10">
                             <div className="flex justify-center">
                               <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
                             </div>
@@ -1078,7 +1227,7 @@ function UserDashboardContent() {
                       )}
                       {domains.length === 0 && !isDomainsLoading ? (
                         <tr>
-                          <td colSpan={7} className="p-24 text-center text-gray-400 text-sm">
+                          <td colSpan={5} className="p-24 text-center text-gray-400 text-sm">
                             No domains found matching your search.
                           </td>
                         </tr>
@@ -1087,19 +1236,7 @@ function UserDashboardContent() {
 
                           return (
                             <tr key={entity._id} className="hover:bg-gray-50/70 transition-colors group cursor-pointer" onClick={() => router.push(`/?domain=${entity.domain}`)}>
-                              <td className="p-4 pl-6 w-12" onClick={(e) => e.stopPropagation()}>
-                                {isDomainFixable(entity) ? (
-                                  <input
-                                    type="checkbox"
-                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                    checked={selectedDomains.includes(entity._id)}
-                                    onChange={() => handleSelectDomain(entity._id)}
-                                  />
-                                ) : (
-                                  <div className="w-4 h-4" /> // Placeholder for alignment
-                                )}
-                              </td>
-                              <td className="p-4 text-[14px] font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+                              <td className="p-4 pl-6 text-[14px] font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
                                 {entity.domain}
                               </td>
                               <td className="p-4">
@@ -1143,36 +1280,6 @@ function UserDashboardContent() {
                                 <div className="flex items-center gap-2 text-[12px] text-gray-500 font-medium">
                                   <ActivityIcon className="w-3.5 h-3.5 text-gray-400" />
                                   {entity.timestamp ? new Date(entity.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown'}
-                                </div>
-                              </td>
-                              <td className="p-4 text-center">
-                                <div className="flex flex-col gap-2 items-center justify-center">
-                                  {!isDomainFixable(entity) ? (
-                                    <span className="text-[12px] text-gray-400 font-medium italic bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-md mb-1 inline-block w-fit text-center">
-                                      No action available
-                                    </span>
-                                  ) : (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleRemediate(entity._id, entity.domain);
-                                      }}
-                                      disabled={isRemediating === entity._id}
-                                      className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-md shadow-sm transition-colors disabled:opacity-50"
-                                    >
-                                      {isRemediating === entity._id ? (
-                                        <>
-                                          <span className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                                          Fixing...
-                                        </>
-                                      ) : (
-                                        <>
-                                          <ShieldCheck className="w-3.5 h-3.5" />
-                                          1-Click Fix
-                                        </>
-                                      )}
-                                    </button>
-                                  )}
                                 </div>
                               </td>
                             </tr>

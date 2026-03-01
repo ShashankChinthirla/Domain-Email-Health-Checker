@@ -34,20 +34,41 @@ export async function getDashboardMetrics(token: string, integrationId?: string)
             baseFilter.integrationId = integrationId;
         }
 
-        // Aggregate counts
-        const totalDomains = await collection.countDocuments(baseFilter);
-        const secureCount = await collection.countDocuments({ ...baseFilter, status: 'Secure' });
-        const atRiskCount = totalDomains - secureCount;
-        const pendingCount = await collection.countDocuments({ ...baseFilter, issueCategory: 'Needs_Scan' });
-
         // Calculate 'Added Today' dynamically
         const oneDayAgo = new Date();
         oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-        const addedToday = await collection.countDocuments({
-            ...baseFilter,
-            createdAt: { $gte: oneDayAgo }
-        });
+        const [
+            totalDomains,
+            secureCount,
+            pendingCount,
+            addedToday,
+            httpIssues,
+            blacklistIssues,
+            missingSpfAndDmarc,
+            missingDmarcOnly,
+            missingSpfOnly,
+            dkimIssues,
+            multipleSpf,
+            multipleDmarc,
+            dmarcPolicyNone
+        ] = await Promise.all([
+            collection.countDocuments(baseFilter),
+            collection.countDocuments({ ...baseFilter, status: 'Secure' }),
+            collection.countDocuments({ ...baseFilter, issueCategory: 'Needs_Scan' }),
+            collection.countDocuments({ ...baseFilter, createdAt: { $gte: oneDayAgo } }),
+            collection.countDocuments({ ...baseFilter, status: { $ne: 'Secure' }, $or: [{ issueCategory: 'http_issue' }, { 'issues.web': { $regex: 'ERROR', $options: 'i' } }] }),
+            collection.countDocuments({ ...baseFilter, status: { $ne: 'Secure' }, $or: [{ issueCategory: 'blacklist_issue' }, { 'issues.blacklist': { $regex: 'ERROR|WARNING', $options: 'i' } }] }),
+            collection.countDocuments({ ...baseFilter, status: { $ne: 'Secure' }, $or: [{ issueCategory: 'No_SPF_AND_DMARC' }, { $and: [{ 'issues.spf': { $regex: 'No SPF record found', $options: 'i' } }, { 'issues.dmarc': { $regex: 'No DMARC record found', $options: 'i' } }] }] }),
+            collection.countDocuments({ ...baseFilter, status: { $ne: 'Secure' }, $or: [{ issueCategory: 'No_DMARC_Only' }, { $and: [{ 'issues.dmarc': { $regex: 'No DMARC record found', $options: 'i' } }, { 'issues.spf': { $not: { $regex: 'No SPF record found', $options: 'i' } } }] }] }),
+            collection.countDocuments({ ...baseFilter, status: { $ne: 'Secure' }, $or: [{ issueCategory: 'No_SPF_Only' }, { $and: [{ 'issues.spf': { $regex: 'No SPF record found', $options: 'i' } }, { 'issues.dmarc': { $not: { $regex: 'No DMARC record found', $options: 'i' } } }] }] }),
+            collection.countDocuments({ ...baseFilter, status: { $ne: 'Secure' }, $or: [{ issueCategory: 'DKIM_Issues' }, { 'issues.dkim': { $regex: 'ERROR', $options: 'i' } }] }),
+            collection.countDocuments({ ...baseFilter, status: { $ne: 'Secure' }, $or: [{ issueCategory: 'Multiple_SPF' }, { 'issues.spf': { $regex: 'Multiple', $options: 'i' } }] }),
+            collection.countDocuments({ ...baseFilter, status: { $ne: 'Secure' }, $or: [{ issueCategory: 'Multiple_DMARC' }, { 'issues.dmarc': { $regex: 'Multiple', $options: 'i' } }] }),
+            collection.countDocuments({ ...baseFilter, status: { $ne: 'Secure' }, $or: [{ issueCategory: 'DMARC_Policy_None' }, { 'issues.dmarc': { $regex: 'Policy.*none', $options: 'i' } }] }),
+        ]);
+
+        const atRiskCount = totalDomains - secureCount;
 
         return {
             totalDomains,
@@ -55,6 +76,17 @@ export async function getDashboardMetrics(token: string, integrationId?: string)
             atRiskCount,
             pendingCount,
             addedToday,
+            issuesBreakdown: {
+                httpIssues,
+                blacklistIssues,
+                missingSpfAndDmarc,
+                missingDmarcOnly,
+                missingSpfOnly,
+                dkimIssues,
+                multipleSpf,
+                multipleDmarc,
+                dmarcPolicyNone
+            },
             success: true
         };
     } catch (error) {
@@ -175,6 +207,52 @@ export async function getPaginatedDomains(token: string, query = "", issueFilter
     } catch (error) {
         console.error("Error fetching domains:", error);
         return { success: false, error: "Failed to fetch domains" };
+    }
+}
+
+export async function getFixableDomains(token: string) {
+    try {
+        const auth = await verifyToken(token);
+        const email = auth.email;
+        if (!email) {
+            return { success: false, error: "Unauthorized: Missing email in token" };
+        }
+
+        const client = await clientPromise;
+        const db = client.db();
+        const collection = db.collection('issue_domains');
+
+        // Note: The logic here directly maps to the `isDomainFixable` frontend check
+        // but runs server-side to bypass all limits and filters.
+        const filter = {
+            ownerUserId: email,
+            status: { $ne: 'Secure' },
+            $or: [
+                { 'issues.spf': { $regex: 'ERROR|WARNING|Multiple|No SPF', $options: 'i' } },
+                { 'issues.dmarc': { $regex: 'ERROR|WARNING|Multiple|No DMARC|none', $options: 'i' } }
+            ]
+        };
+
+        const domains = await collection.find(filter).sort({ domain: 1 }).toArray();
+
+        const sanitizedDomains = domains.map(d => ({
+            _id: d._id.toString(),
+            domain: d.domain || '',
+            status: d.status || 'Warning',
+            issuesDetected: d.issuesDetected || 0,
+            timestamp: d.timestamp ? d.timestamp.toISOString() : null,
+            user: typeof d.ownerUserId === 'string' ? d.ownerUserId : (d.user?.email || null),
+            issueCategory: d.issueCategory || null,
+            issues: d.issues || {}
+        }));
+
+        return {
+            success: true,
+            domains: sanitizedDomains
+        };
+    } catch (error) {
+        console.error("Error fetching fixable domains:", error);
+        return { success: false, error: "Failed to fetch fixable domains" };
     }
 }
 

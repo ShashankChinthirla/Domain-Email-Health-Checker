@@ -667,10 +667,10 @@
     "issues": {}
   },
   {
-    "_id": "69a43292f21e2612d6c0b87c",
+    "_id": "69a471ab68a7d28078cd57a0",
     "domain": "3fcaptiveservicesdev.com",
-    "status": "At Risk",
-    "issueCategory": "blacklist_issue",
+    "status": "Secure",
+    "issueCategory": "Clean",
     "issuesDetected": 6,
     "spfFull": "v=spf1 include:_spf.google.com ~all",
     "dmarcFull": "v=DMARC1; p=reject; sp=reject; pct=100; rua=mailto:Patrick@3fcaptiveservicesdev.com; ruf=mailto:Patrick@3fcaptiveservicesdev.com; adkim=r; aspf=r;",
@@ -678,17 +678,17 @@
     "ownerUserId": "shashankshashankc41@gmail.com",
     "integrationId": "db674688-6cdc-4cdf-89ea-a06ff70307fe",
     "healthStatus": "Awaiting initial automation scan",
-    "timestamp": "2026-03-01T12:35:30.383Z",
-    "createdAt": "2026-03-01T12:35:30.383Z",
+    "timestamp": "2026-03-01T17:04:43.207Z",
+    "createdAt": "2026-03-01T17:04:43.207Z",
     "issues": {
-      "blacklist": "ERROR: See report for details"
+      "blacklist": "WARNING: See report"
     }
   },
   {
-    "_id": "69a43292f21e2612d6c0b931",
+    "_id": "69a471ab68a7d28078cd5855",
     "domain": "app3fcaptiveservicesdev.com",
-    "status": "At Risk",
-    "issueCategory": "blacklist_issue",
+    "status": "Secure",
+    "issueCategory": "Clean",
     "issuesDetected": 6,
     "spfFull": "v=spf1 include:_spf.google.com ~all",
     "dmarcFull": "v=DMARC1; p=reject; sp=reject; pct=100; rua=mailto:Patrick@app3fcaptiveservicesdev.com; ruf=mailto:Patrick@app3fcaptiveservicesdev.com; adkim=r; aspf=r;",
@@ -696,14 +696,14 @@
     "ownerUserId": "shashankshashankc41@gmail.com",
     "integrationId": "db674688-6cdc-4cdf-89ea-a06ff70307fe",
     "healthStatus": "Awaiting initial automation scan",
-    "timestamp": "2026-03-01T12:35:30.383Z",
-    "createdAt": "2026-03-01T12:35:30.383Z",
+    "timestamp": "2026-03-01T17:04:43.208Z",
+    "createdAt": "2026-03-01T17:04:43.208Z",
     "issues": {
-      "blacklist": "ERROR: See report for details"
+      "blacklist": "WARNING: See report"
     }
   },
   {
-    "_id": "69a43293f21e2612d6c0c503",
+    "_id": "69a471ac68a7d28078cd6427",
     "domain": "get3fcaptiveservicesdev.com",
     "status": "Secure",
     "issueCategory": "Clean",
@@ -714,14 +714,14 @@
     "ownerUserId": "shashankshashankc41@gmail.com",
     "integrationId": "db674688-6cdc-4cdf-89ea-a06ff70307fe",
     "healthStatus": "Awaiting initial automation scan",
-    "timestamp": "2026-03-01T12:35:30.387Z",
-    "createdAt": "2026-03-01T12:35:30.387Z",
+    "timestamp": "2026-03-01T17:04:43.210Z",
+    "createdAt": "2026-03-01T17:04:43.210Z",
     "issues": {
       "blacklist": "WARNING: See report"
     }
   },
   {
-    "_id": "69a43294f21e2612d6c0d02a",
+    "_id": "69a471ac68a7d28078cd6f4e",
     "domain": "my3fcaptiveservicesdev.com",
     "status": "Secure",
     "issueCategory": "Clean",
@@ -732,14 +732,14 @@
     "ownerUserId": "shashankshashankc41@gmail.com",
     "integrationId": "db674688-6cdc-4cdf-89ea-a06ff70307fe",
     "healthStatus": "Awaiting initial automation scan",
-    "timestamp": "2026-03-01T12:35:30.390Z",
-    "createdAt": "2026-03-01T12:35:30.390Z",
+    "timestamp": "2026-03-01T17:04:43.211Z",
+    "createdAt": "2026-03-01T17:04:43.211Z",
     "issues": {
       "blacklist": "WARNING: See report"
     }
   },
   {
-    "_id": "69a43295f21e2612d6c0e18c",
+    "_id": "69a471ad68a7d28078cd80b0",
     "domain": "use3fcaptiveservicesdev.com",
     "status": "Secure",
     "issueCategory": "Clean",
@@ -750,8 +750,8 @@
     "ownerUserId": "shashankshashankc41@gmail.com",
     "integrationId": "db674688-6cdc-4cdf-89ea-a06ff70307fe",
     "healthStatus": "Awaiting initial automation scan",
-    "timestamp": "2026-03-01T12:35:30.394Z",
-    "createdAt": "2026-03-01T12:35:30.394Z",
+    "timestamp": "2026-03-01T17:04:43.214Z",
+    "createdAt": "2026-03-01T17:04:43.214Z",
     "issues": {
       "blacklist": "WARNING: See report"
     }
