@@ -23,6 +23,7 @@ interface NavbarProps {
 export function Navbar({ searchState }: NavbarProps) {
     const pathname = usePathname();
     const [user, setUser] = useState<User | null>(null);
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
     const [isUserAdmin, setIsUserAdmin] = useState(false);
     const [dbDisplayName, setDbDisplayName] = useState('');
     const [showLogin, setShowLogin] = useState(false);
@@ -53,12 +54,15 @@ export function Navbar({ searchState }: NavbarProps) {
         };
 
         const unsubscribe = auth.onAuthStateChanged(async (u) => {
-            setUser(u);
             if (u) {
+                setUser(u);
+                setIsAuthLoading(false);
                 await fetchUserData(u);
             } else {
+                setUser(null);
                 setIsUserAdmin(false);
                 setDbDisplayName('');
+                setIsAuthLoading(false);
             }
         });
 
@@ -128,7 +132,9 @@ export function Navbar({ searchState }: NavbarProps) {
                         <div className="flex items-center gap-4 h-8 shrink-0">
                             {user && (pathname === '/dashboard' || pathname === '/settings') && <NotificationDropdown />}
 
-                            {user ? (
+                            {isAuthLoading ? (
+                                <div className="w-9 h-9 rounded-full bg-white/5 animate-pulse border border-white/10" />
+                            ) : user ? (
                                 <div className="relative" ref={dropdownRef}>
                                     <button
                                         onClick={() => setShowDropdown(!showDropdown)}

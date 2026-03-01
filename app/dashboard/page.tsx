@@ -55,7 +55,8 @@ function UserDashboardContent() {
 
   // TABS
   const activeTabParam = searchParams.get('tab') as 'overview' | 'actions' | 'fleet' | 'automation' | null;
-  const activeTab = activeTabParam && ['overview', 'actions', 'fleet', 'automation'].includes(activeTabParam) ? activeTabParam : 'overview';
+  const validTabs: ('overview' | 'actions' | 'fleet' | 'automation')[] = ['overview', 'actions', 'fleet', 'automation'];
+  const activeTab = activeTabParam && validTabs.includes(activeTabParam) ? activeTabParam : 'overview';
 
   // DOMAINS STATE (MongoDB)
   const searchQuery = searchParams.get('q') || '';
@@ -63,6 +64,12 @@ function UserDashboardContent() {
   const integrationFilter = searchParams.get('integration') || 'All';
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
   const currentPage = isNaN(pageParam) ? 1 : pageParam;
+
+  const limitParam = parseInt(searchParams.get('limit') || '50', 10);
+  const itemsPerPage = isNaN(limitParam) ? 50 : limitParam;
+
+  const actionParam = searchParams.get('action') as 'sync' | 'fix' | 'export' | null;
+  const selectedAction = actionParam && ['sync', 'fix', 'export'].includes(actionParam) ? actionParam : 'sync';
 
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
 
@@ -74,6 +81,7 @@ function UserDashboardContent() {
   const [metrics, setMetrics] = useState({ totalDomains: 0, secureCount: 0, atRiskCount: 0, addedToday: 0, pendingCount: 0 });
   const [userSettings, setUserSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [integrations, setIntegrations] = useState<IntegrationDTO[]>([]);
+  const [isIntegrationsLoading, setIsIntegrationsLoading] = useState(true);
 
   const getEmailLink = (domain: MongoDomain) => {
     if (!domain.user) return '#';
@@ -139,7 +147,6 @@ function UserDashboardContent() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalDomainsMatching, setTotalDomainsMatching] = useState(0);
   const [isDomainsLoading, setIsDomainsLoading] = useState(true);
-  const itemsPerPage = 50;
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -196,6 +203,17 @@ function UserDashboardContent() {
   const [isScanningNew, setIsScanningNew] = useState(false);
   const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 });
 
+  useEffect(() => {
+    const saved = localStorage.getItem('domainguard_is_scanning');
+    if (saved === 'true') {
+      setIsScanningNew(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('domainguard_is_scanning', String(isScanningNew));
+  }, [isScanningNew]);
+
   // AUTH GUARD
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -221,6 +239,8 @@ function UserDashboardContent() {
           if (integrationsRes.success && integrationsRes.integrations) setIntegrations(integrationsRes.integrations);
         } catch (error) {
           console.error("Error fetching initial settings/integrations:", error);
+        } finally {
+          setIsIntegrationsLoading(false);
         }
       };
       fetchInitialData();
@@ -461,7 +481,6 @@ function UserDashboardContent() {
   };
 
   const [isCancelling, setIsCancelling] = useState(false);
-  const [selectedAction, setSelectedAction] = useState<'sync' | 'fix' | 'export'>('sync');
 
   const handleCancelScan = async () => {
     if (!user) return;
@@ -714,7 +733,7 @@ function UserDashboardContent() {
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {integrations.length === 0 && !isDomainsLoading ? (
+            {integrations.length === 0 && !isIntegrationsLoading && !isDomainsLoading ? (
               <div className="bg-[#141417] border border-white/10 p-12 rounded-3xl text-center shadow-xl flex flex-col items-center justify-center">
                 <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-2xl flex items-center justify-center mb-6">
                   <Server className="w-8 h-8" />
@@ -808,7 +827,7 @@ function UserDashboardContent() {
 
                 <div className="flex flex-col p-3 space-y-1">
                   <button
-                    onClick={() => setSelectedAction('sync')}
+                    onClick={() => updateUrlParams({ action: 'sync' })}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all",
                       selectedAction === 'sync' ? "bg-white/10 text-white font-medium" : "text-white/50 hover:bg-white/5 hover:text-white"
@@ -819,7 +838,7 @@ function UserDashboardContent() {
                   </button>
 
                   <button
-                    onClick={() => setSelectedAction('fix')}
+                    onClick={() => updateUrlParams({ action: 'fix' })}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all",
                       selectedAction === 'fix' ? "bg-white/10 text-white font-medium" : "text-white/50 hover:bg-white/5 hover:text-white"
@@ -830,7 +849,7 @@ function UserDashboardContent() {
                   </button>
 
                   <button
-                    onClick={() => setSelectedAction('export')}
+                    onClick={() => updateUrlParams({ action: 'export' })}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all",
                       selectedAction === 'export' ? "bg-white/10 text-white font-medium" : "text-white/50 hover:bg-white/5 hover:text-white"
@@ -954,7 +973,7 @@ function UserDashboardContent() {
         {/* TAB 3: CLOUDFLARE FLEET */}
         {activeTab === 'fleet' && (
           <div className="bg-white rounded-xl shadow-xl overflow-hidden relative z-0">
-            {integrations.length === 0 && !isDomainsLoading ? (
+            {integrations.length === 0 && !isIntegrationsLoading && !isDomainsLoading ? (
               <div className="p-16 text-center flex flex-col items-center justify-center">
                 <div className="w-16 h-16 bg-gray-100 border border-gray-200 text-gray-400 rounded-2xl flex items-center justify-center mb-6">
                   <Server className="w-8 h-8" />
@@ -1006,8 +1025,20 @@ function UserDashboardContent() {
                       <option value="DMARC_Policy_None">🛡️ DMARC Policy None</option>
                     </select>
                   </div>
-                  <div className="text-xs text-gray-400 font-medium">
-                    Showing {totalDomainsMatching} results
+                  <div className="flex items-center gap-3 text-xs text-gray-500 font-medium whitespace-nowrap">
+                    <span>Show:</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => updateUrlParams({ limit: e.target.value, page: null })}
+                      className="py-1 px-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500 bg-white"
+                    >
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                      <option value="100">100</option>
+                      <option value="200">200</option>
+                      <option value="500">500</option>
+                    </select>
+                    <span className="ml-2">Showing {totalDomainsMatching} results</span>
                   </div>
                 </div>
 
@@ -1038,7 +1069,7 @@ function UserDashboardContent() {
                     <tbody className="divide-y divide-gray-100 bg-white relative">
                       {isDomainsLoading && (
                         <tr>
-                          <td colSpan={5} className="p-12 text-center bg-white/50 backdrop-blur-sm relative z-10">
+                          <td colSpan={7} className="p-24 text-center bg-white/50 backdrop-blur-sm relative z-10">
                             <div className="flex justify-center">
                               <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
                             </div>
@@ -1047,7 +1078,7 @@ function UserDashboardContent() {
                       )}
                       {domains.length === 0 && !isDomainsLoading ? (
                         <tr>
-                          <td colSpan={5} className="p-12 text-center text-gray-400 text-sm">
+                          <td colSpan={7} className="p-24 text-center text-gray-400 text-sm">
                             No domains found matching your search.
                           </td>
                         </tr>
