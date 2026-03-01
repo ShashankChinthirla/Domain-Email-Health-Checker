@@ -39,20 +39,31 @@ function isPrivateIP(ip: string): boolean {
     return false;
 }
 
-// --- DO CHECK: Google DNS-over-HTTPS (DoH) Fallback ---
-// Fixes "False Positives" where local UDP resolvers drop packets under heavy 10,000 concurrent loads.
-async function resolveTxtWithDoH(domain: string): Promise<string[][]> {
+// Multiple DoH Providers to rotate load and avoid 429 Rate Limits from 50 concurrency
+const DOH_PROVIDERS = [
+    (d: string) => `https://dns.google/resolve?name=${encodeURIComponent(d)}&type=TXT`,
+    (d: string) => `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(d)}&type=TXT`,
+    (d: string) => `https://dns.quad9.net:5053/dns-query?name=${encodeURIComponent(d)}&type=TXT`
+];
+
+async function resolveTxtWithDoH(domain: string, attempt: number = 0): Promise<string[][]> {
     try {
-        const url = `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=TXT`;
+        const providerUrl = DOH_PROVIDERS[attempt % DOH_PROVIDERS.length];
+        const url = providerUrl(domain);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-        // Node's native fetch (available in Next.js 14+)
+        // Native fetch with explicit DNS-JSON header
         const res = await fetch(url, { headers: { accept: 'application/dns-json' }, cache: 'no-store', signal: controller.signal });
         clearTimeout(timeoutId);
 
         if (!res.ok) {
+            if (res.status === 429 && attempt < 2) {
+                // Rate limited by this DoH provider! Immediately swap to the next provider and retry.
+                console.warn(`[DoH] HTTP 429 Rate Limit from provider ${attempt}. Swapping...`);
+                return await resolveTxtWithDoH(domain, attempt + 1);
+            }
             throw new Error(`DOH_RESPONDED_WITH_HTTP_${res.status}`);
         }
 
@@ -63,7 +74,6 @@ async function resolveTxtWithDoH(domain: string): Promise<string[][]> {
         return json.Answer
             .filter((a: any) => a.type === 16)
             .map((a: any) => {
-                // dns.google wraps TXT answers in literal quotes like: "\"v=spf1...\""
                 let text = a.data;
                 if (typeof text === 'string' && text.startsWith('"') && text.endsWith('"')) {
                     text = text.slice(1, -1);
@@ -72,6 +82,10 @@ async function resolveTxtWithDoH(domain: string): Promise<string[][]> {
             });
     } catch (error: any) {
         if (error.name === 'AbortError' || error.message?.includes('Timeout') || error.message?.includes('fetch failed')) {
+            if (attempt < 2) {
+                console.warn(`[DoH] Timeout/Network error from provider ${attempt}. Swapping...`);
+                return await resolveTxtWithDoH(domain, attempt + 1);
+            }
             throw new Error('DOH_NETWORK_ERROR_OR_TIMEOUT');
         }
         throw error;
@@ -513,10 +527,13 @@ async function runSPFTests(domain: string): Promise<{ tests: TestResult[], rawSp
             // Check max 5 includes to avoid timeout
             for (const inc of includes.slice(0, 5)) {
                 try {
-                    await dns.resolveTxt(inc);
-                } catch {
-                    voidCount++;
-                    voidDomains.push(inc);
+                    await resolveTxtWithRetry(inc); // Use stable DoH rotated retry
+                } catch (err: any) {
+                    if (err.message && (err.message.includes('NOTFOUND') || err.code === 'ENOTFOUND')) {
+                        voidCount++;
+                        voidDomains.push(inc);
+                    }
+                    // If it's a rate limit or timeout, we don't penalize it as void to prevent false positives
                 }
             }
 
@@ -561,8 +578,11 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
                     const rootTxt = await resolveTxtWithRetry(`_dmarc.${rootDomain}`);
                     dmarcRecords = rootTxt.map(t => t.join('')).filter(s => s.toLowerCase().startsWith('v=dmarc1'));
                     if (dmarcRecords.length > 0) isInherited = true;
-                } catch {
-                    // Ignore fail on root, keep looking up the tree
+                } catch (err: any) {
+                    // Ignore fail on ENOENT (missing), but throw if it's a rate limit/network timeout
+                    if (err.message?.includes('TIMEOUT') || err.message?.includes('DOH_') || err.message?.includes('DNS')) {
+                        throw err;
+                    }
                 }
             }
         }
