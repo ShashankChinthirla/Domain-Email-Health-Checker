@@ -84,7 +84,7 @@ function calculateIssuesCount(report: any): number {
     // Ignore all network noise — these are environmental failures, not security issues
     const ignoredInfos = [
         'Timed Out', 'Timeout', 'DNS Error', 'DNS Lookup Failed',
-        'Failed', 'Unreachable', 'Rate Limited', 'TIMEOUT'
+        'Failed', 'Unreachable', 'Rate Limited', 'TIMEOUT', 'Ignored (Shared IP)'
     ];
 
     for (const catKey of Object.keys(report.categories)) {

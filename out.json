@@ -1,10 +1,16 @@
 {
-  "domain": "bestmedicalmarketingroiai.com",
+  "domain": "3fcaptiveservicesdev.com",
   "rawSpf": "v=spf1 include:_spf.google.com ~all",
-  "rawDmarc": "v=DMARC1; p=reject; sp=reject; pct=100; rua=mailto:jim@bestmedicalmarketingroiai.com; ruf=mailto:jim@bestmedicalmarketingroiai.com; adkim=r; aspf=r;",
+  "rawDmarc": "v=DMARC1; p=reject; sp=reject; pct=100; rua=mailto:Patrick@3fcaptiveservicesdev.com; ruf=mailto:Patrick@3fcaptiveservicesdev.com; adkim=r; aspf=r;",
   "dmarcPolicy": null,
-  "mxRecords": [],
-  "score": 73,
+  "mxRecords": [
+    "aspmx.l.google.com",
+    "alt2.aspmx.l.google.com",
+    "alt1.aspmx.l.google.com",
+    "alt3.aspmx.l.google.com",
+    "alt4.aspmx.l.google.com"
+  ],
+  "score": 56,
   "categories": {
     "problems": {
       "category": "Problems",
@@ -15,14 +21,6 @@
           "info": "DNS Lookup Failed",
           "reason": "Transient DNS lookup failure. Domain may exist but DNS was temporarily unreachable.",
           "recommendation": "Check your domain registrar settings. Try again.",
-          "category": "DNS"
-        },
-        {
-          "name": "MX Record Published",
-          "status": "Warning",
-          "info": "DNS Lookup Failed",
-          "reason": "DNS Lookup temporarily failed: DNS Timeout. Domain may still be valid.",
-          "recommendation": "Check your DNS configuration or try again.",
           "category": "DNS"
         },
         {
@@ -45,7 +43,7 @@
           "name": "Spamhaus DBL",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on Spamhaus DBL",
+          "reason": "3fcaptiveservicesdev.com is clean on Spamhaus DBL",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -53,7 +51,7 @@
           "name": "SURBL (multi)",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SURBL (multi)",
+          "reason": "3fcaptiveservicesdev.com is clean on SURBL (multi)",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -61,7 +59,7 @@
           "name": "SEM FRESH",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SEM FRESH",
+          "reason": "3fcaptiveservicesdev.com is clean on SEM FRESH",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -69,7 +67,7 @@
           "name": "SEM URI",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SEM URI",
+          "reason": "3fcaptiveservicesdev.com is clean on SEM URI",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -77,7 +75,7 @@
           "name": "SEM URIRED",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SEM URIRED",
+          "reason": "3fcaptiveservicesdev.com is clean on SEM URIRED",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -85,7 +83,7 @@
           "name": "ivmURI",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on ivmURI",
+          "reason": "3fcaptiveservicesdev.com is clean on ivmURI",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -93,7 +91,7 @@
           "name": "NordSpam DBL",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on NordSpam DBL",
+          "reason": "3fcaptiveservicesdev.com is clean on NordSpam DBL",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -101,14 +99,206 @@
           "name": "SORBS RHSBL",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SORBS RHSBL",
+          "reason": "3fcaptiveservicesdev.com is clean on SORBS RHSBL",
           "recommendation": "No action needed.",
+          "category": "Blacklist"
+        },
+        {
+          "name": "Spamhaus ZEN",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for Spamhaus ZEN. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "Spamhaus ZEN",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SpamCop",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for SpamCop. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "SpamCop",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "Barracuda",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for Barracuda. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "Barracuda",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "PSBL",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for PSBL. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "PSBL",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "UCEPROTECT L1",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for UCEPROTECT L1. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "UCEPROTECT L1",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "DroneBL",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for DroneBL. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "DroneBL",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "MailSpike BL",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for MailSpike BL. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "MailSpike BL",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "RBL JP",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for RBL JP. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "RBL JP",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "Anonmails",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for Anonmails. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "Anonmails",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "Blocklist.de",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for Blocklist.de. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "Blocklist.de",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SURBL (multi)",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for SURBL (multi).",
+          "recommendation": "Request delisting from this provider.",
+          "host": "SURBL (multi)",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SEM FRESH",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for SEM FRESH.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "SEM FRESH",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SEM URI",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for SEM URI.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "SEM URI",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "ivmURI",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for ivmURI.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "ivmURI",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "NordSpam DBL",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for NordSpam DBL.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "NordSpam DBL",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SORBS RHSBL",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for SORBS RHSBL.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "SORBS RHSBL",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
           "category": "Blacklist"
         }
       ],
       "stats": {
         "passed": 0,
-        "warnings": 12,
+        "warnings": 27,
         "errors": 0
       }
     },
@@ -141,10 +331,26 @@
         },
         {
           "name": "MX Record Published",
-          "status": "Warning",
-          "info": "DNS Lookup Failed",
-          "reason": "DNS Lookup temporarily failed: DNS Timeout. Domain may still be valid.",
-          "recommendation": "Check your DNS configuration or try again.",
+          "status": "Pass",
+          "info": "5 Records",
+          "reason": "Mail Exchange records found.",
+          "recommendation": "No action needed.",
+          "category": "DNS"
+        },
+        {
+          "name": "MX Canonical Check",
+          "status": "Pass",
+          "info": "Standard Host",
+          "reason": "MX record points to a canonical host (not a CNAME).",
+          "recommendation": "No action needed.",
+          "category": "DNS"
+        },
+        {
+          "name": "Primary MX Resolution",
+          "status": "Pass",
+          "info": "aspmx.l.google.com -> IPv6",
+          "reason": "Primary MX host resolves to an IPv6 address.",
+          "recommendation": "Ensure IPv4 is also supported for maximum compatibility.",
           "category": "DNS"
         },
         {
@@ -189,8 +395,8 @@
         }
       ],
       "stats": {
-        "passed": 5,
-        "warnings": 4,
+        "passed": 8,
+        "warnings": 3,
         "errors": 0
       }
     },
@@ -341,7 +547,7 @@
           "info": "Ready",
           "reason": "DMARC policy supports BIMI implementation.",
           "recommendation": "You can now set up a BIMI record.",
-          "host": "bestmedicalmarketingroiai.com",
+          "host": "3fcaptiveservicesdev.com",
           "result": "BIMI Ready",
           "category": "DMARC"
         }
@@ -356,40 +562,16 @@
       "category": "DKIM",
       "tests": [
         {
-          "name": "DKIM Record Found",
+          "name": "DKIM Selectors",
           "status": "Pass",
-          "info": "1 Keys",
-          "reason": "Found DKIM keys for selectors: google",
-          "recommendation": "No action needed.",
-          "category": "DKIM"
-        },
-        {
-          "name": "DKIM Version (google)",
-          "status": "Pass",
-          "info": "v=DKIM1",
-          "reason": "Correct version.",
-          "recommendation": "No action needed.",
-          "category": "DKIM"
-        },
-        {
-          "name": "DKIM Key Type (google)",
-          "status": "Pass",
-          "info": "RSA",
-          "reason": "Standard RSA key.",
-          "recommendation": "No action needed.",
-          "category": "DKIM"
-        },
-        {
-          "name": "DKIM Key Strength (google)",
-          "status": "Pass",
-          "info": "2048-bit+",
-          "reason": "Key appears strong (~2352 bits).",
-          "recommendation": "No action needed.",
+          "info": "Info: Selector not discoverable",
+          "reason": "Common selectors were checked but not found. This is normal if you use custom selectors.",
+          "recommendation": "No action needed unless you are missing DKIM.",
           "category": "DKIM"
         }
       ],
       "stats": {
-        "passed": 4,
+        "passed": 1,
         "warnings": 0,
         "errors": 0
       }
@@ -401,7 +583,7 @@
           "name": "Spamhaus DBL",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on Spamhaus DBL",
+          "reason": "3fcaptiveservicesdev.com is clean on Spamhaus DBL",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -409,7 +591,7 @@
           "name": "SURBL (multi)",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SURBL (multi)",
+          "reason": "3fcaptiveservicesdev.com is clean on SURBL (multi)",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -417,7 +599,7 @@
           "name": "SEM FRESH",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SEM FRESH",
+          "reason": "3fcaptiveservicesdev.com is clean on SEM FRESH",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -425,7 +607,7 @@
           "name": "SEM URI",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SEM URI",
+          "reason": "3fcaptiveservicesdev.com is clean on SEM URI",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -433,7 +615,7 @@
           "name": "SEM URIRED",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SEM URIRED",
+          "reason": "3fcaptiveservicesdev.com is clean on SEM URIRED",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -441,7 +623,7 @@
           "name": "ivmURI",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on ivmURI",
+          "reason": "3fcaptiveservicesdev.com is clean on ivmURI",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -449,7 +631,7 @@
           "name": "NordSpam DBL",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on NordSpam DBL",
+          "reason": "3fcaptiveservicesdev.com is clean on NordSpam DBL",
           "recommendation": "No action needed.",
           "category": "Blacklist"
         },
@@ -457,14 +639,242 @@
           "name": "SORBS RHSBL",
           "status": "Warning",
           "info": "TIMEOUT",
-          "reason": "bestmedicalmarketingroiai.com is clean on SORBS RHSBL",
+          "reason": "3fcaptiveservicesdev.com is clean on SORBS RHSBL",
           "recommendation": "No action needed.",
+          "category": "Blacklist"
+        },
+        {
+          "name": "Spamhaus ZEN",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for Spamhaus ZEN. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "Spamhaus ZEN",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SpamCop",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for SpamCop. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "SpamCop",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "Barracuda",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for Barracuda. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "Barracuda",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SORBS (IP)",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "Clean across all 1 MX IPs.",
+          "recommendation": "No action needed.",
+          "host": "SORBS (IP)",
+          "result": "Clean",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "PSBL",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for PSBL. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "PSBL",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "UCEPROTECT L1",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for UCEPROTECT L1. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "UCEPROTECT L1",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "DroneBL",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for DroneBL. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "DroneBL",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "MailSpike BL",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for MailSpike BL. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "MailSpike BL",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "RBL JP",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for RBL JP. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "RBL JP",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "Anonmails",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for Anonmails. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "Anonmails",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "Blocklist.de",
+          "status": "Warning",
+          "info": "Timeout",
+          "reason": "Check timed out for Blocklist.de. Status is inconclusive.",
+          "recommendation": "Usually temporary. No action needed unless it persists.",
+          "host": "Blocklist.de",
+          "result": "Timeout",
+          "type": "IP",
+          "severity": "LOW",
+          "category": "Blacklist"
+        },
+        {
+          "name": "Spamhaus DBL",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "Domain 3fcaptiveservicesdev.com is not listed on Spamhaus DBL.",
+          "recommendation": "No action needed.",
+          "host": "Spamhaus DBL",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "HIGH",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SURBL (multi)",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for SURBL (multi).",
+          "recommendation": "Request delisting from this provider.",
+          "host": "SURBL (multi)",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SEM FRESH",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for SEM FRESH.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "SEM FRESH",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SEM URI",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for SEM URI.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "SEM URI",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SEM URIRED",
+          "status": "Pass",
+          "info": "Clean",
+          "reason": "Domain 3fcaptiveservicesdev.com is not listed on SEM URIRED.",
+          "recommendation": "No action needed.",
+          "host": "SEM URIRED",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "ivmURI",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for ivmURI.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "ivmURI",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "NordSpam DBL",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for NordSpam DBL.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "NordSpam DBL",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
+          "category": "Blacklist"
+        },
+        {
+          "name": "SORBS RHSBL",
+          "status": "Warning",
+          "info": "TIMEOUT",
+          "reason": "Check timed out for SORBS RHSBL.",
+          "recommendation": "Request delisting from this provider.",
+          "host": "SORBS RHSBL",
+          "result": "Clean",
+          "type": "DOMAIN",
+          "severity": "MEDIUM",
           "category": "Blacklist"
         }
       ],
       "stats": {
-        "passed": 0,
-        "warnings": 8,
+        "passed": 3,
+        "warnings": 24,
         "errors": 0
       }
     },
@@ -490,7 +900,7 @@
         {
           "name": "SSL Certificate",
           "status": "Pass",
-          "info": "Valid (86 days left)",
+          "info": "Valid (45 days left)",
           "reason": "Certificate is valid.",
           "recommendation": "No action needed.",
           "category": "Web Server"

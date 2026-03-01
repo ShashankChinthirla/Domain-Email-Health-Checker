@@ -923,11 +923,12 @@ async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Pro
             const isHighTrust = name === 'SpamCop' || name === 'Spamhaus ZEN';
             severity = isHighTrust ? 'HIGH' : 'MEDIUM';
 
-            if (isSharedProvider && !isHighTrust) {
+            if (isSharedProvider) {
+                // NEVER penalize users for shared infrastructure (Google/Microsoft) IP blocks
                 status = 'Warning';
                 resultTxt = 'Shared Provider Listed';
                 reason = `Listed on ${name} for IP(s): ${data.targets.join(', ')}. However, this is a shared provider IP.`;
-                rec = 'Reputation is managed by the provider. No action needed unless you have high bounce rates.';
+                rec = 'Reputation is managed by your email provider. No action needed unless experiencing bounces.';
             } else {
                 status = 'Error';
                 resultTxt = 'Listed';
@@ -949,7 +950,7 @@ async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Pro
         results.push({
             name,
             status,
-            info: data.status === 'UNKNOWN' ? 'Rate Limited' : data.status === 'TIMEOUT' ? 'Timeout' : (data.targets.length > 0 ? `Listed: ${data.targets.length} IP(s)` : 'Clean'),
+            info: data.status === 'UNKNOWN' ? 'Rate Limited' : data.status === 'TIMEOUT' ? 'Timeout' : (resultTxt === 'Shared Provider Listed' ? 'Ignored (Shared IP)' : (data.targets.length > 0 ? `Listed: ${data.targets.length} IP(s)` : 'Clean')),
             reason,
             recommendation: rec,
             host: name,
