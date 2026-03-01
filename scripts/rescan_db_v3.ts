@@ -71,7 +71,7 @@ function determineIssueCategory(report: any): string {
     const blacklistErrors = blacklistTests.filter((t: any) => t.status === 'Error' && !t.info?.includes('Timeout') && t.info !== 'Rate Limited');
     if (blacklistErrors.length > 0) return 'blacklist_issue';
 
-    const webErrors = webTests.filter((t: any) => t.status === 'Error' && !t.info?.includes('Timeout') && t.info !== 'Unreachable');
+    const webErrors = webTests.filter((t: any) => t.status === 'Error' && !t.info?.includes('Timeout'));
     if (webErrors.length > 0) return 'http_issue';
 
     return 'Clean';
@@ -81,17 +81,23 @@ function calculateIssuesCount(report: any): number {
     let count = 0;
     if (!report.categories) return count;
 
-    // Ignore all network noise — these are environmental failures, not security issues
+    // Ignore transient network noise — DNS timeouts, rate limits, etc.
+    // NOTE: 'Unreachable' is intentionally NOT in this list for web server checks,
+    // because an unreachable HTTPS endpoint is a REAL error (not a transient DNS blip).
     const ignoredInfos = [
         'Timed Out', 'Timeout', 'DNS Error', 'DNS Lookup Failed',
-        'Failed', 'Unreachable', 'Rate Limited', 'TIMEOUT', 'Ignored (Shared IP)'
+        'Failed', 'Rate Limited', 'TIMEOUT', 'Ignored (Shared IP)'
     ];
 
+    // For DNS category only, also ignore 'Unreachable' (unresolvable NS glue is transient)
+    const dnsOnlyIgnoredInfos = [...ignoredInfos, 'Unreachable'];
+
     for (const catKey of Object.keys(report.categories)) {
-        const tests = report.categories[catKey].tests || [];
+        const tests = (report.categories as any)[catKey].tests || [];
+        const activeIgnoredInfos = catKey === 'dns' ? dnsOnlyIgnoredInfos : ignoredInfos;
         count += tests.filter((t: any) =>
             (t.status === 'Error' || t.status === 'Warning') &&
-            !ignoredInfos.some(noise => t.info?.includes(noise))
+            !activeIgnoredInfos.some((noise: string) => t.info?.includes(noise))
         ).length;
     }
     return count;
