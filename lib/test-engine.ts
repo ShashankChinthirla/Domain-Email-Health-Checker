@@ -1041,7 +1041,10 @@ async function runWebServerTests(domain: string): Promise<TestResult[]> {
                 } else if (res.ok) {
                     t.push({ name: 'HTTP Availability', status: 'Warning', info: 'No Redirect', reason: 'HTTP is available but does not redirect to HTTPS.', recommendation: 'Configure 301 redirect from HTTP to HTTPS.' });
                 } else {
-                    t.push({ name: 'HTTP Availability', status: 'Error', info: `Status ${res.status}`, reason: `HTTP returned error ${res.status}.`, recommendation: 'Check web server configuration.' });
+                    const isWAFBlock = [401, 403, 429, 502, 503].includes(res.status);
+                    const newStatus = isWAFBlock ? 'Warning' : 'Error';
+                    const newReason = isWAFBlock ? `HTTP access restricted (WAF/Bot protection). Server is alive.` : `HTTP returned error ${res.status}.`;
+                    t.push({ name: 'HTTP Availability', status: newStatus, info: `Status ${res.status}`, reason: newReason, recommendation: isWAFBlock ? 'No action needed; automated scan was blocked.' : 'Check web server configuration.' });
                 }
             } catch (err: any) {
                 const msg = err.name === 'AbortError' ? 'Timeout' : 'Unreachable';
@@ -1062,7 +1065,10 @@ async function runWebServerTests(domain: string): Promise<TestResult[]> {
                 if (res.ok || res.status < 400) {
                     t.push({ name: 'HTTPS Availability', status: 'Pass', info: `Status ${res.status}`, reason: 'HTTPS is accessible.', recommendation: 'No action needed.' });
                 } else {
-                    t.push({ name: 'HTTPS Availability', status: 'Error', info: `Status ${res.status}`, reason: `Web server returned error status ${res.status}.`, recommendation: 'Check web server logs.' });
+                    const isWAFBlock = [401, 403, 429, 502, 503].includes(res.status);
+                    const newStatus = isWAFBlock ? 'Warning' : 'Error';
+                    const newReason = isWAFBlock ? `HTTPS access restricted (WAF/Bot protection). Server is alive.` : `Web server returned error status ${res.status}.`;
+                    t.push({ name: 'HTTPS Availability', status: newStatus, info: `Status ${res.status}`, reason: newReason, recommendation: isWAFBlock ? 'No action needed; automated scan was blocked.' : 'Check web server logs.' });
                 }
             } catch (err: any) {
                 const msg = err.name === 'AbortError' ? 'Timeout' : 'Unreachable';
