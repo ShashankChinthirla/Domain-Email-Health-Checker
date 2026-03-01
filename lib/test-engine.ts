@@ -847,7 +847,7 @@ async function runDKIMTests(domain: string): Promise<TestResult[]> {
 
 
 // --- 5. Blacklist (Safe IP Check) ---
-async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Promise<TestResult[]> {
+export async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Promise<TestResult[]> {
     if (mxRecords.length === 0) return [{ name: 'Blacklist Check', status: 'Warning', info: 'No MX Records to check', reason: 'We cannot check blacklists without an MX record.', recommendation: 'Fix your MX records first.' }];
 
     // 1. Resolve all unique MX IPs
@@ -861,7 +861,7 @@ async function runBlacklistTestsWithMX(domain: string, mxRecords: string[]): Pro
 
     const uniqueIps = Array.from(allIps);
     if (uniqueIps.length === 0) {
-        return [{ name: 'MX IP Resolution', status: 'Error', info: 'Could not resolve any MX IPs', reason: 'DNS lookup for all MX hosts failed.', recommendation: 'Check if your MX hosts exist.' }];
+        return [{ name: 'MX IP Resolution', status: 'Warning', info: 'Could not resolve any MX IPs', reason: 'DNS lookup for all MX hosts failed (Transient).', recommendation: 'Check if your MX hosts exist.', category: 'DNS' }];
     }
 
     // 2. Run IP Blacklists against all unique IPs
