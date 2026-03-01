@@ -239,13 +239,13 @@ export default function SettingsPage() {
         <div className="min-h-screen bg-[#09090b] text-white selection:bg-blue-500/30 font-sans pb-32">
             <Navbar />
 
-            <main className="w-[calc(100%-3rem)] max-w-6xl mx-auto px-6 pt-24 pb-32 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <main className="w-[calc(100%-3rem)] max-w-7xl mx-auto px-6 pt-24 pb-32 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="mb-8 flex items-center justify-between">
                     <h1 className="text-3xl font-bold tracking-tight text-white mb-1">
                         {isUserAdmin ? 'Account Settings' : 'Personal Profile'}
                     </h1>
                     <button
-                        onClick={() => router.back()}
+                        onClick={() => router.push('/dashboard')}
                         className="group flex items-center gap-2 text-[14px] font-medium text-zinc-400 hover:text-white transition-colors cursor-pointer"
                     >
                         <ArrowLeft size={16} /> Back to Dashboard
@@ -254,7 +254,7 @@ export default function SettingsPage() {
 
                 <div className="flex flex-col md:flex-row gap-8">
                     {/* Sidebar */}
-                    <aside className="w-full md:w-64 shrink-0 flex flex-col gap-1">
+                    <aside className="w-full md:w-64 shrink-0 flex flex-col gap-1 md:sticky md:top-24 self-start">
                         <div className="relative mb-4">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                             <input
@@ -329,40 +329,7 @@ export default function SettingsPage() {
                                         <h2 className="text-[18px] font-semibold text-white mb-2">API Integrations</h2>
                                         <p className="text-[14px] text-white/50 mb-6">Securely connect DNS providers to sync domains and apply automated fixes. Keys are AES-256 encrypted.</p>
 
-                                        <div className="flex flex-col gap-3">
-                                            {integrations.length === 0 ? (
-                                                <div className="py-6 text-center text-[13px] text-white/30 border border-dashed border-white/10 rounded-xl bg-[#111]">
-                                                    No active integrations connected.
-                                                </div>
-                                            ) : (
-                                                integrations.map(int => (
-                                                    <div key={int.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-[#111] border border-white/10 rounded-xl">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shrink-0">
-                                                                <Shield className="w-5 h-5 text-black" />
-                                                            </div>
-                                                            <div className="flex flex-col min-w-0">
-                                                                <span className="text-[15px] font-semibold text-white flex items-center gap-2">
-                                                                    {int.label}
-                                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-white/10 text-white/70">Cloudflare</span>
-                                                                </span>
-                                                                <span className="text-[13px] text-white/40 truncate">Added {new Date(int.createdAt).toLocaleDateString()}</span>
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            onClick={async (e) => { e.preventDefault(); handleRemoveIntegration(int.id, int.label); }}
-                                                            disabled={isManagingIntegrations}
-                                                            className="text-[13px] font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 px-4 py-2 rounded-md transition-colors border border-rose-500/20 cursor-pointer"
-                                                        >
-                                                            Disconnect
-                                                        </button>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="bg-[#0a0a0c] border-t border-white/10">
-                                        <form onSubmit={handleAddIntegration} className="p-6">
+                                        <form onSubmit={handleAddIntegration} className="mb-8">
                                             <h3 className="text-[14px] font-semibold text-white mb-4">Add New Connection</h3>
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
                                                 <div className="space-y-1.5">
@@ -407,6 +374,41 @@ export default function SettingsPage() {
                                                 </div>
                                             </div>
                                         </form>
+
+                                        <div className="w-full h-px bg-white/10 mb-8" />
+
+                                        <h3 className="text-[14px] font-semibold text-white mb-4">Active Integrations</h3>
+                                        <div className="flex flex-col gap-3">
+                                            {integrations.length === 0 ? (
+                                                <div className="py-6 text-center text-[13px] text-white/30 border border-dashed border-white/10 rounded-xl bg-[#111]">
+                                                    No active integrations connected.
+                                                </div>
+                                            ) : (
+                                                integrations.map(int => (
+                                                    <div key={int.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-[#111] border border-white/10 rounded-xl">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shrink-0">
+                                                                <Shield className="w-5 h-5 text-black" />
+                                                            </div>
+                                                            <div className="flex flex-col min-w-0">
+                                                                <span className="text-[15px] font-semibold text-white flex items-center gap-2">
+                                                                    {int.label}
+                                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-white/10 text-white/70">Cloudflare</span>
+                                                                </span>
+                                                                <span className="text-[13px] text-white/40 truncate">Added {new Date(int.createdAt).toLocaleDateString()}</span>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={async (e) => { e.preventDefault(); handleRemoveIntegration(int.id, int.label); }}
+                                                            disabled={isManagingIntegrations}
+                                                            className="text-[13px] font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 px-4 py-2 rounded-md transition-colors border border-rose-500/20 cursor-pointer"
+                                                        >
+                                                            Disconnect
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -419,37 +421,7 @@ export default function SettingsPage() {
                                         <h2 className="text-[18px] font-semibold text-white mb-2">Access Management</h2>
                                         <p className="text-[14px] text-white/50 mb-6">Control which accounts have root authorization to access this dashboard.</p>
 
-                                        <div className="bg-[#111] border border-white/10 rounded-xl overflow-hidden shadow-inner max-h-[300px] overflow-y-auto mb-6">
-                                            <ul className="divide-y divide-white/5">
-                                                {adminUsers.map((admin) => (
-                                                    <li key={admin.email} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center border border-white/10 text-zinc-300 shrink-0">
-                                                                {admin.email.charAt(0).toUpperCase()}
-                                                            </div>
-                                                            <div className="flex flex-col min-w-0">
-                                                                <span className="text-[14px] font-bold text-white truncate">{admin.email}</span>
-                                                                <span className="text-[12px] text-zinc-500 truncate">Added by {admin.addedBy}</span>
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleRemoveAdmin(admin.email)}
-                                                            disabled={isManagingAdmins || admin.email === 'shashankshashankc39@gmail.com' || admin.email === user?.email}
-                                                            className="p-2 text-rose-500/50 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-                                                            title="Revoke Access"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </li>
-                                                ))}
-                                                {adminUsers.length === 0 && (
-                                                    <li className="p-6 text-center text-zinc-500 text-[14px]">No active administrators found.</li>
-                                                )}
-                                            </ul>
-                                        </div>
-
-                                        <form onSubmit={handleAddAdmin} className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full max-w-2xl">
+                                        <form onSubmit={handleAddAdmin} className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full max-w-2xl mb-8">
                                             <div
                                                 className="flex-1 w-full min-h-10 bg-[#111] border border-white/10 rounded-lg p-1.5 flex flex-wrap items-center gap-1.5 focus-within:border-white/20 transition-colors cursor-text"
                                                 onClick={() => document.getElementById('admin-email-input')?.focus()}
@@ -485,6 +457,37 @@ export default function SettingsPage() {
                                                 {isManagingAdmins ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send Invite'}
                                             </button>
                                         </form>
+
+                                        <h3 className="text-[14px] font-semibold text-white mb-4">Active Administrators</h3>
+                                        <div className="bg-[#111] border border-white/10 rounded-xl overflow-hidden shadow-inner max-h-[300px] overflow-y-auto mb-2">
+                                            <ul className="divide-y divide-white/5">
+                                                {adminUsers.map((admin) => (
+                                                    <li key={admin.email} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center border border-white/10 text-zinc-300 shrink-0">
+                                                                {admin.email.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div className="flex flex-col min-w-0">
+                                                                <span className="text-[14px] font-bold text-white truncate">{admin.email}</span>
+                                                                <span className="text-[12px] text-zinc-500 truncate">Added by {admin.addedBy}</span>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveAdmin(admin.email)}
+                                                            disabled={isManagingAdmins || admin.email === 'shashankshashankc39@gmail.com' || admin.email === user?.email}
+                                                            className="p-2 text-rose-500/50 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                                                            title="Revoke Access"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                                {adminUsers.length === 0 && (
+                                                    <li className="p-6 text-center text-zinc-500 text-[14px]">No active administrators found.</li>
+                                                )}
+                                            </ul>
+                                        </div>
                                     </div>
                                     <div className="px-6 py-3 bg-[#0a0a0c] border-t border-white/10 text-[13px] text-white/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                                         <span>Administrators have full access to view, edit, and initiate remediation scans.</span>
