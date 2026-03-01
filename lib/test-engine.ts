@@ -419,6 +419,7 @@ async function runSPFTests(domain: string): Promise<{ tests: TestResult[], rawSp
         let allTerminator = '';
         const includes: string[] = [];
         const ip4s: string[] = [];
+        const ip6s: string[] = [];
         const ptrs: string[] = [];
 
         mechs.forEach(m => {
@@ -430,6 +431,7 @@ async function runSPFTests(domain: string): Promise<{ tests: TestResult[], rawSp
             }
             if (m.startsWith('include:')) includes.push(m.replace('include:', ''));
             if (m.startsWith('ip4:')) ip4s.push(m);
+            if (m.startsWith('ip6:')) ip6s.push(m);
             if (m.includes('ptr')) ptrs.push(m);
         });
 
@@ -491,9 +493,15 @@ async function runSPFTests(domain: string): Promise<{ tests: TestResult[], rawSp
         }
 
         // 10. Valid IP4 Syntax (Regex check)
-        const badIps = ip4s.filter(ip => !/^ip4:[\d\.\/]+$/.test(ip));
-        if (badIps.length > 0) {
-            tests.push({ name: 'SPF IP4 Syntax', status: 'Error', info: 'Invalid Format', reason: `Found malformed IP4 tags: ${badIps.join(', ')}`, recommendation: 'Fix IP4 syntax (e.g., ip4:1.2.3.4).' });
+        // 10. Valid IP4/IP6 Syntax (Regex check)
+        const badIp4s = ip4s.filter(ip => !/^ip4:[\d\.\/]+$/.test(ip));
+        const badIp6s = ip6s.filter(ip => !/^ip6:[a-fA-F0-9\:\/]+$/.test(ip));
+
+        if (badIp4s.length > 0 || badIp6s.length > 0) {
+            const allBad = [...badIp4s, ...badIp6s];
+            tests.push({ name: 'SPF IP Syntax', status: 'Error', info: 'Invalid Format', reason: `Found malformed IP tags: ${allBad.join(', ')}`, recommendation: 'Fix IP structure (e.g., ip4:1.2.3.4 or ip6:2001:db8::/32).' });
+        } else if (ip4s.length > 0 || ip6s.length > 0) {
+            tests.push({ name: 'SPF IP Syntax', status: 'Pass', info: 'Valid IPs', reason: `Tested ${ip4s.length + ip6s.length} IP declarations safely.`, recommendation: 'No action needed.' });
         }
 
         // 11. Void Lookup Check (Async - for Includes)
@@ -539,15 +547,33 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
         const txt = await resolveTxtWithRetry(`_dmarc.${domain}`);
 
         // 2. Merge Chunks & Filter
-        const dmarcRecords = txt.map(t => t.join('')).filter(s => s.toLowerCase().startsWith('v=dmarc1'));
+        let dmarcRecords = txt.map(t => t.join('')).filter(s => s.toLowerCase().startsWith('v=dmarc1'));
 
-        // 3. Presence Check
+        // 3. Fallback Inheritance for Subdomains
+        let isInherited = false;
+        let rootDomain = domain;
+        if (dmarcRecords.length === 0) {
+            const parts = domain.split('.');
+            while (parts.length > 2 && dmarcRecords.length === 0) {
+                parts.shift();
+                rootDomain = parts.join('.');
+                try {
+                    const rootTxt = await resolveTxtWithRetry(`_dmarc.${rootDomain}`);
+                    dmarcRecords = rootTxt.map(t => t.join('')).filter(s => s.toLowerCase().startsWith('v=dmarc1'));
+                    if (dmarcRecords.length > 0) isInherited = true;
+                } catch {
+                    // Ignore fail on root, keep looking up the tree
+                }
+            }
+        }
+
+        // 4. Presence Check
         if (dmarcRecords.length > 0) {
             tests.push({
                 name: 'DMARC Record Found',
                 status: 'Pass',
-                info: 'Present',
-                reason: 'DMARC record published at _dmarc subdomain.',
+                info: isInherited ? `Inherited (${rootDomain})` : 'Present',
+                reason: isInherited ? `DMARC record inherited from parent domain ${rootDomain}.` : 'DMARC record published at _dmarc subdomain.',
                 recommendation: 'No action needed.'
             });
             rawDmarc = dmarcRecords[0];
@@ -557,7 +583,7 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
                 name: 'DMARC Record Found',
                 status: 'Error',
                 info: 'Missing',
-                reason: `No DMARC record found at _dmarc.${domain}`,
+                reason: `No DMARC record found at _dmarc.${domain} (or inherited parents).`,
                 recommendation: 'Create a DMARC record to protect your domain.',
                 host: domain,
                 result: 'DMARC Record Missing'
@@ -565,7 +591,7 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
             return { tests, rawDmarc: null };
         }
 
-        // 2. Multiple Records
+        // 5. Multiple Records
         if (dmarcRecords.length > 1) {
             tests.push({ name: 'DMARC Multiple Records', status: 'Error', info: `${dmarcRecords.length} records`, reason: 'Multiple DMARC records cause undefined behavior.', recommendation: 'Delete all but one DMARC record.' });
         }
@@ -577,8 +603,7 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
             if (k && v) tags[k.toLowerCase()] = v.trim();
         });
 
-        // 3. Policy Check
-        // 3. Policy Check
+        // 6. Policy Check
         if (tags['p']) {
             policy = tags['p'].toLowerCase();
             if (policy === 'reject') {

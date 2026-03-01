@@ -410,9 +410,9 @@ function UserDashboardContent() {
 
       toast.success(`Sync Complete! Fetched ${data.totalCloudflareDomains} domains from Cloudflare.\nDiscovered and added ${data.newDomainsAdded} brand new domains for scanning.`);
 
-      // Refresh the current view
       setCurrentPage(1);
-      // Force a re-fetch manually
+      // Let the polling hook know the background scan engine has been triggered
+      setIsScanningNew(true);
       setRefreshKey(prev => prev + 1);
 
     } catch (error: unknown) {
@@ -423,7 +423,6 @@ function UserDashboardContent() {
     }
   };
 
-  // (isScanningNew & scanProgress states moved to global persistent wrappers at top)
   const handleScanNewDomains = async () => {
     if (!user?.email) return;
 
@@ -436,7 +435,6 @@ function UserDashboardContent() {
     setScanProgress({ current: 0, total: metrics.pendingCount });
 
     try {
-      // Hit the GitHub trigger API instead of doing it securely in browser
       const token = await user.getIdToken();
       const response = await fetch('/api/trigger-scan', {
         method: 'POST',
@@ -456,9 +454,6 @@ function UserDashboardContent() {
         }
         throw new Error(data.error || 'Failed to trigger cloud scan');
       }
-
-      // Do nothing! The useEffect polling hook will now take over and track progress.
-
     } catch (err: any) {
       toast.error(`Error scanning domains: ${err.message}`);
       setIsScanningNew(false);
@@ -466,7 +461,7 @@ function UserDashboardContent() {
   };
 
   const [isCancelling, setIsCancelling] = useState(false);
-  const [selectedAction, setSelectedAction] = useState<'sync' | 'scan' | 'fix' | 'export'>('sync');
+  const [selectedAction, setSelectedAction] = useState<'sync' | 'fix' | 'export'>('sync');
 
   const handleCancelScan = async () => {
     if (!user) return;
@@ -517,10 +512,13 @@ function UserDashboardContent() {
 
           setRefreshKey(prev => prev + 1);
 
-          setScanProgress(prev => ({
-            ...prev,
-            current: prev.total - res.pendingCount!
-          }));
+          setScanProgress(prev => {
+            const newTotal = prev.total === 0 ? res.pendingCount! : prev.total;
+            return {
+              total: newTotal,
+              current: newTotal - res.pendingCount!
+            };
+          });
 
           if (res.pendingCount === 0) {
             setIsScanningNew(false);
@@ -817,18 +815,7 @@ function UserDashboardContent() {
                     )}
                   >
                     <RefreshCw className="w-4 h-4 shrink-0" />
-                    <span>Sync Cloudflare</span>
-                  </button>
-
-                  <button
-                    onClick={() => setSelectedAction('scan')}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all",
-                      selectedAction === 'scan' ? "bg-white/10 text-white font-medium" : "text-white/50 hover:bg-white/5 hover:text-white"
-                    )}
-                  >
-                    <Play className="w-4 h-4 shrink-0" />
-                    <span>Hyper-Scan</span>
+                    <span>Sync & Scan Fleet</span>
                   </button>
 
                   <button
@@ -859,37 +846,19 @@ function UserDashboardContent() {
               <div className="flex-1 bg-[#09090b] relative overflow-hidden flex flex-col items-center justify-center p-12">
                 <div className="w-full max-w-lg">
 
-                  {/* DETAIL VIEW: SYNC */}
+                  {/* DETAIL VIEW: SYNC & SCAN */}
                   {selectedAction === 'sync' && (
                     <div className="flex flex-col text-left">
-                      <h3 className="text-2xl font-semibold text-white mb-2 tracking-tight">Sync Cloudflare Fleet</h3>
+                      <h3 className="text-2xl font-semibold text-white mb-2 tracking-tight">Sync & Scan Fleet</h3>
                       <p className="text-white/60 text-sm mb-8">
-                        Connect to your active Cloudflare integrations and pull the latest domain zones. Discovered domains will be added to your queue.
-                      </p>
-                      <button
-                        onClick={handleSyncCloudflare}
-                        disabled={isSyncing}
-                        className="h-10 px-4 bg-white hover:bg-zinc-200 text-black text-sm font-medium rounded-md transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer self-start flex items-center gap-2"
-                      >
-                        {isSyncing && <div className="w-3.5 h-3.5 border-2 border-black/20 border-t-black rounded-full animate-spin" />}
-                        {isSyncing ? 'Syncing...' : 'Initiate Sync Queue'}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* DETAIL VIEW: SCAN */}
-                  {selectedAction === 'scan' && (
-                    <div className="flex flex-col text-left">
-                      <h3 className="text-2xl font-semibold text-white mb-2 tracking-tight">Hyper-Scan Distributed Matrix</h3>
-                      <p className="text-white/60 text-sm mb-8">
-                        Spin up the distributed scan engine to resolve DNS records for all pending domains in parallel.
+                        Connect to Cloudflare, discover new domains, and instantly deploy the distributed scan engine to resolve DNS records in parallel.
                       </p>
 
                       <div className="w-full border border-white/10 bg-white/[0.02] rounded-lg p-5 mb-8">
                         <div className="flex justify-between items-center mb-4">
                           <span className="text-sm font-medium text-white/50">Queue Status</span>
-                          <span className={cn("text-xs font-medium px-2 py-1 rounded-full", isScanningNew || metrics.pendingCount > 0 ? "bg-white/10 text-white" : "text-white/40")}>
-                            {isScanningNew || metrics.pendingCount > 0 ? 'Processing' : 'Idle'}
+                          <span className={cn("text-xs font-medium px-2 py-1 rounded-full", isSyncing || isScanningNew ? "bg-white/10 text-white" : (metrics.pendingCount > 0 ? "bg-amber-500/20 text-amber-500" : "text-white/40"))}>
+                            {isSyncing ? 'Ingesting Domains...' : (isScanningNew ? 'Scanning...' : (metrics.pendingCount > 0 ? 'Paused' : 'Idle'))}
                           </span>
                         </div>
                         <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden mb-2">
@@ -899,29 +868,39 @@ function UserDashboardContent() {
                           />
                         </div>
                         <div className="flex justify-between text-xs text-white/40">
-                          <span>{scanProgress.total > 0 ? scanProgress.current : Math.max(0, metrics.totalDomains - metrics.pendingCount)} Processed</span>
+                          <span>{scanProgress.total > 0 ? scanProgress.current : Math.max(0, metrics.totalDomains - metrics.pendingCount)} Securely Checked</span>
                           <span>{scanProgress.total > 0 ? scanProgress.total : metrics.totalDomains} Total Domains</span>
                         </div>
                       </div>
 
-                      {isScanningNew ? (
+                      <div className="flex gap-4">
                         <button
-                          onClick={handleCancelScan}
-                          disabled={isCancelling}
-                          className="h-10 px-4 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 text-sm font-medium rounded-md transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer self-start flex items-center gap-2"
+                          onClick={handleSyncCloudflare}
+                          disabled={isSyncing || isScanningNew}
+                          className="h-10 px-4 bg-white hover:bg-zinc-200 text-black text-sm font-medium rounded-md transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
                         >
-                          {isCancelling && <div className="w-3.5 h-3.5 border-2 border-rose-500/20 border-t-rose-500 rounded-full animate-spin" />}
-                          {isCancelling ? 'Terminating...' : 'Stop Execution'}
+                          {isSyncing && <div className="w-3.5 h-3.5 border-2 border-black/20 border-t-black rounded-full animate-spin" />}
+                          {isSyncing ? 'Syncing...' : 'Initiate Unified Sync & Scan'}
                         </button>
-                      ) : (
-                        <button
-                          onClick={() => handleScanNewDomains()}
-                          disabled={metrics.pendingCount === 0 || isSyncing}
-                          className="h-10 px-4 bg-white hover:bg-zinc-200 text-black text-sm font-medium rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer self-start flex items-center gap-2"
-                        >
-                          {metrics.pendingCount === 0 ? "Queue Empty" : "Execute Matrix Scan"}
-                        </button>
-                      )}
+
+                        {isScanningNew ? (
+                          <button
+                            onClick={handleCancelScan}
+                            disabled={isCancelling}
+                            className="h-10 px-4 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 text-sm font-medium rounded-md transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
+                          >
+                            {isCancelling && <div className="w-3.5 h-3.5 border-2 border-rose-500/20 border-t-rose-500 rounded-full animate-spin" />}
+                            {isCancelling ? 'Terminating...' : 'Stop Execution'}
+                          </button>
+                        ) : metrics.pendingCount > 0 ? (
+                          <button
+                            onClick={handleScanNewDomains}
+                            className="h-10 px-4 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-500 text-sm font-medium rounded-md transition-all cursor-pointer flex items-center gap-2"
+                          >
+                            Resume Paused Scan
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   )}
 

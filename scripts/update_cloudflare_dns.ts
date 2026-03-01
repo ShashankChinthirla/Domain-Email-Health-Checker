@@ -119,7 +119,7 @@ async function updateCloudflareDns() {
                 continue;
             }
 
-            const apiToken = decryptApiKey(integration.encryptedApiKey);
+            const apiToken = await decryptApiKey(integration.encryptedApiKey);
             if (!apiToken) {
                 console.log(`⚠️ Warning: Failed to decrypt API key for ${domain}. Skipping.`);
                 continue;
@@ -138,8 +138,11 @@ async function updateCloudflareDns() {
                 const dnsData = await fetchCfApi(`/zones/${zoneId}/dns_records?type=TXT`, apiToken);
                 const allTxtRecords: CloudflareDNSRecord[] = dnsData.result;
 
-                const spfRecords = allTxtRecords.filter(r => r.content.includes('v=spf1'));
-                const dmarcRecords = allTxtRecords.filter(r => r.content.startsWith('v=DMARC1') || r.name.startsWith('_dmarc'));
+                const spfRecords = allTxtRecords.filter(r => r.content.includes('v=spf1') && r.name === domain);
+                const dmarcRecords = allTxtRecords.filter(r =>
+                    (r.content.startsWith('v=DMARC1') || r.content.includes('v=DMARC1;')) &&
+                    (r.name === '_dmarc' || r.name === `_dmarc.${domain}`)
+                );
 
                 const rawSpf = spfRecords.length > 0 ? spfRecords[0].content : null;
                 const rawDmarc = dmarcRecords.length > 0 ? dmarcRecords[0].content : null;
@@ -157,13 +160,13 @@ async function updateCloudflareDns() {
                         // Update existing
                         await fetchCfApi(`/zones/${zoneId}/dns_records/${spfRecords[0].id}`, apiToken, {
                             method: 'PUT',
-                            body: JSON.stringify({ type: 'TXT', name: domain, content: newSpf, comment: "Auto-secured by Admin Bot" })
+                            body: JSON.stringify({ type: 'TXT', name: domain, content: newSpf, comment: "Auto-secured by DomainGuard V2" })
                         });
                     } else {
                         // Create new
                         await fetchCfApi(`/zones/${zoneId}/dns_records`, apiToken, {
                             method: 'POST',
-                            body: JSON.stringify({ type: 'TXT', name: domain, content: newSpf, comment: "Auto-secured by Admin Bot" })
+                            body: JSON.stringify({ type: 'TXT', name: domain, content: newSpf, comment: "Auto-secured by DomainGuard V2" })
                         });
                     }
                     updatedSpf = true;
@@ -179,13 +182,13 @@ async function updateCloudflareDns() {
                         // Update existing
                         await fetchCfApi(`/zones/${zoneId}/dns_records/${dmarcRecords[0].id}`, apiToken, {
                             method: 'PUT',
-                            body: JSON.stringify({ type: 'TXT', name: dmarcName, content: newDmarc, comment: "Auto-secured by Admin Bot" })
+                            body: JSON.stringify({ type: 'TXT', name: dmarcName, content: newDmarc, comment: "Auto-secured by DomainGuard V2" })
                         });
                     } else {
                         // Create new
                         await fetchCfApi(`/zones/${zoneId}/dns_records`, apiToken, {
                             method: 'POST',
-                            body: JSON.stringify({ type: 'TXT', name: dmarcName, content: newDmarc, comment: "Auto-secured by Admin Bot" })
+                            body: JSON.stringify({ type: 'TXT', name: dmarcName, content: newDmarc, comment: "Auto-secured by DomainGuard V2" })
                         });
                     }
                     updatedDmarc = true;
@@ -196,12 +199,23 @@ async function updateCloudflareDns() {
                 // 5. Explicitly Back Up & Log to Database
                 if (updatedSpf || updatedDmarc) {
                     console.log(`💾 Committing original backups and metadata to MongoDB...`);
+
+                    let newIssuesDetected = doc.issuesDetected > 0 ? doc.issuesDetected : 0;
+                    if (updatedSpf && newIssuesDetected > 0) newIssuesDetected -= 1;
+                    if (updatedDmarc && newIssuesDetected > 0) newIssuesDetected -= 1;
+
+                    const newStatus = newIssuesDetected === 0 ? 'Secure' : doc.status;
+                    const newIssueCategory = newIssuesDetected === 0 ? 'Clean' : doc.issueCategory;
+
                     await collection.updateOne({ _id: doc._id }, {
                         $set: {
                             originalSpfFull: rawSpf,
                             originalDmarcFull: rawDmarc,
                             automationDnsApplied: true,
-                            updatedAt: new Date()
+                            updatedAt: new Date(),
+                            status: newStatus,
+                            issuesDetected: newIssuesDetected,
+                            issueCategory: newIssueCategory
                         }
                     });
                 }

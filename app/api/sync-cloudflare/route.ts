@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { decryptApiKey } from '@/lib/encryption';
 import { verifyAuth } from '@/lib/auth';
+import { POST as triggerScan } from '@/app/api/trigger-scan/route';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,6 +134,15 @@ export async function POST(request: NextRequest) {
                 totalNewInserted += newDomains.length;
                 allNewDomainsAdded.push(...newDomains);
             }
+        }
+
+        // 5. Auto-trigger the background scan engine for the unified experience
+        console.log(`Sync API: Auto-triggering the background scan engine...`);
+        try {
+            // Forward the original authenticated request to securely trigger the Action
+            await triggerScan(request);
+        } catch (scanErr) {
+            console.error("Non-fatal error auto-triggering scan:", scanErr);
         }
 
         console.log(`Sync API: Returning success. Total: ${totalCloudflareDomainsCount}, New: ${totalNewInserted}`);

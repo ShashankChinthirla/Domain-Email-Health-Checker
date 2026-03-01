@@ -216,7 +216,7 @@ async function runRescan() {
 
         let absoluteIndex = skipCount;
         let processed = 0;
-        const BATCH_SIZE = 10;
+        const BATCH_SIZE = 50; // Massively upgraded concurrency for 10k+ domain queues
         const domainPool: any[] = [];
 
         // Track retry attempts specifically for each domain ID

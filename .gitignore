@@ -42,3 +42,4 @@ next-env.d.ts
 
 # local utility scripts
 clear_db_local.js
+clear_user_db.ts
