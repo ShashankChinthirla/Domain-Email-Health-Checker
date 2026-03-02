@@ -578,14 +578,7 @@ function UserDashboardContent() {
   const [bulkRemediateProgress, setBulkRemediateProgress] = useState({ total: 0, completed: 0, success: 0, failed: 0 });
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
 
-  const isDomainFixable = (domain: MongoDomain) => {
-    if (domain.status === 'Secure') return false;
 
-    const hasSpfIssue = domain.issues?.spf && (domain.issues.spf.includes('ERROR') || domain.issues.spf.includes('WARNING') || domain.issues.spf.includes('Multiple') || domain.issues.spf.includes('No SPF'));
-    const hasDmarcIssue = domain.issues?.dmarc && (domain.issues.dmarc.includes('ERROR') || domain.issues.dmarc.includes('WARNING') || domain.issues.dmarc.includes('Multiple') || domain.issues.dmarc.includes('No DMARC') || domain.issues.dmarc.includes('none'));
-
-    return !!(hasSpfIssue || hasDmarcIssue);
-  };
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {

@@ -222,15 +222,19 @@ export async function getFixableDomains(token: string) {
         const db = client.db();
         const collection = db.collection('issue_domains');
 
-        // Note: The logic here directly maps to the `isDomainFixable` frontend check
-        // but runs server-side to bypass all limits and filters.
+        // Note: The logic here directly maps to the user's strict requirement:
+        // ONLY allow simple, singular DNS fixes.
+        // DO NOT allow: HTTP issues, Blacklist issues, Multiple Records, or Missing Both.
         const filter = {
             ownerUserId: email,
             status: { $ne: 'Secure' },
-            $or: [
-                { 'issues.spf': { $regex: 'ERROR|WARNING|Multiple|No SPF', $options: 'i' } },
-                { 'issues.dmarc': { $regex: 'ERROR|WARNING|Multiple|No DMARC|none', $options: 'i' } }
-            ]
+            issueCategory: {
+                $in: [
+                    'No_SPF_Only',
+                    'No_DMARC_Only',
+                    'DMARC_Policy_None'
+                ]
+            }
         };
 
         const domains = await collection.find(filter).sort({ domain: 1 }).toArray();
