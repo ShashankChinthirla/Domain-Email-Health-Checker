@@ -68,8 +68,8 @@ function UserDashboardContent() {
   const limitParam = parseInt(searchParams.get('limit') || '50', 10);
   const itemsPerPage = isNaN(limitParam) ? 50 : limitParam;
 
-  const actionParam = searchParams.get('action') as 'sync' | 'fix' | 'export' | null;
-  const selectedAction = actionParam && ['sync', 'fix', 'export'].includes(actionParam) ? actionParam : 'sync';
+  const actionParam = searchParams.get('action') as 'sync' | 'fix' | 'export' | 'bulk' | null;
+  const selectedAction = actionParam && ['sync', 'fix', 'export', 'bulk'].includes(actionParam) ? actionParam : 'sync';
 
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
 
@@ -165,7 +165,7 @@ function UserDashboardContent() {
     router.push(`${pathname}${queryStr}`, { scroll: false });
   };
 
-  const setActiveTab = (tab: 'overview' | 'actions' | 'bulk' | 'fleet' | 'automation') => updateUrlParams({ tab });
+  const setActiveTab = (tab: 'overview' | 'actions' | 'fleet' | 'automation') => updateUrlParams({ tab });
   const setSearchQuery = (q: string) => updateUrlParams({ q: q || null, page: null });
   const setIssueFilter = (f: string | ((prev: string) => string)) => {
     const newFilter = typeof f === 'function' ? f(issueFilter) : f;
@@ -746,15 +746,7 @@ function UserDashboardContent() {
           >
             <Zap className="w-4 h-4 shrink-0" /> Action Center
           </button>
-          <button
-            onClick={() => setActiveTab('bulk')}
-            className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm transition-all border-b-2 cursor-pointer whitespace-nowrap",
-              activeTab === 'bulk' ? "text-white border-white font-medium" : "text-white/50 border-transparent hover:text-white"
-            )}
-          >
-            <ShieldCheck className="w-4 h-4 shrink-0" /> Bulk Remediate
-          </button>
+
           <button
             onClick={() => setActiveTab('fleet')}
             className={cn(
@@ -884,6 +876,17 @@ function UserDashboardContent() {
                   </button>
 
                   <button
+                    onClick={() => updateUrlParams({ action: 'bulk' })}
+                    className={cn(
+                      "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-3 cursor-pointer",
+                      selectedAction === 'bulk' ? "bg-white/10 text-white font-medium" : "text-white/50 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    <span>Automated Bulk Fixes</span>
+                  </button>
+
+                  <button
                     onClick={() => updateUrlParams({ action: 'export' })}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all",
@@ -974,155 +977,145 @@ function UserDashboardContent() {
                       </button>
                     </div>
                   )}
-                </div>
-              </div>
 
-            </div>
-          </div>
-        )}
+                  {/* DETAIL VIEW: BULK REMEDIATE */}
+                  {selectedAction === 'bulk' && (
+                    <div className="flex flex-col text-left w-full h-full max-h-[800px]">
+                      <h3 className="text-2xl font-semibold text-white mb-2 tracking-tight">Automated Bulk Remediation</h3>
+                      <p className="text-white/60 text-sm mb-6">
+                        Deploy correct SPF and DMARC policies into the DNS zones for domains with fixable configuration issues. This tool operates completely isolated from the rest of the dashboard.
+                      </p>
 
-        {/* TAB 2.5: BULK REMEDIATE */}
-        {activeTab === 'bulk' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="border border-white/10 rounded-xl overflow-hidden bg-[#09090b] p-8 md:p-12">
-              <div className="max-w-4xl mx-auto flex flex-col text-left">
-                <h3 className="text-2xl font-semibold text-white mb-2 tracking-tight">Automated Bulk Remediation</h3>
-                <p className="text-white/60 text-sm mb-6">
-                  Deploy correct SPF and DMARC policies into the DNS zones for domains with fixable configuration issues. This tool operates completely isolated from the rest of the dashboard.
-                </p>
-
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="bg-white/[0.03] border border-white/10 rounded-lg p-6 flex-1 max-w-[250px]">
-                    <p className="text-white/40 text-[11px] uppercase tracking-wider mb-2 font-semibold">Total Eligible</p>
-                    <p className="text-4xl font-bold text-white tracking-tight">{bulkDomains.length}</p>
-                  </div>
-                  <div className="bg-white/[0.03] border border-blue-500/20 rounded-lg p-6 flex-1 max-w-[250px] relative overflow-hidden">
-                    <div className="absolute inset-0 bg-blue-500/5 pointer-events-none" />
-                    <p className="text-blue-400/60 text-[11px] uppercase tracking-wider mb-2 font-semibold relative z-10">Selected Targets</p>
-                    <p className="text-4xl font-bold text-blue-400 tracking-tight relative z-10">{selectedDomains.length}</p>
-                  </div>
-                </div>
-
-                <div className="w-full bg-[#161618] border border-white/10 rounded-lg mb-8 overflow-hidden flex flex-col min-h-[400px]">
-                  <div className="bg-white/5 px-6 py-4 flex items-center justify-between border-b border-white/10 shrink-0">
-                    <span className="text-sm font-medium text-white/90">Eligible Domains ({bulkDomains.length})</span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setSelectedDomains(bulkDomains.map(d => d._id))}
-                        className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm font-medium border border-blue-500/20 rounded transition-all cursor-pointer"
-                      >
-                        Select All
-                      </button>
-                      <button
-                        onClick={() => setSelectedDomains([])}
-                        className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white border border-white/10 rounded transition-all text-sm font-medium cursor-pointer"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                  <div className="overflow-y-auto max-h-[600px]">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 bg-[#161618] border-b border-white/5 z-10">
-                        <tr>
-                          <th className="p-4 pl-6 w-12 text-white/40 font-medium text-[11px] uppercase">
-                            <input
-                              type="checkbox"
-                              className="rounded border-none bg-white/10 checked:bg-blue-500 focus:ring-0 cursor-pointer"
-                              checked={bulkDomains.length > 0 && selectedDomains.length === bulkDomains.length}
-                              onChange={(e) => {
-                                if (e.target.checked) setSelectedDomains(bulkDomains.map(d => d._id));
-                                else setSelectedDomains([]);
-                              }}
-                            />
-                          </th>
-                          <th className="p-4 text-[11px] uppercase font-medium text-white/40 tracking-wider">Domain</th>
-                          <th className="p-4 text-[11px] uppercase font-medium text-white/40 tracking-wider">Detected Issues</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {bulkDomains.map(domain => (
-                          <tr key={domain._id} className="hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => handleSelectDomain(domain._id)}>
-                            <td className="p-4 pl-6 w-12" onClick={e => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                className="rounded border-none bg-white/10 checked:bg-blue-500 focus:ring-0 cursor-pointer"
-                                checked={selectedDomains.includes(domain._id)}
-                                onChange={() => handleSelectDomain(domain._id)}
-                              />
-                            </td>
-                            <td className="p-4 text-[14px] text-white/90 font-medium">{domain.domain}</td>
-                            <td className="p-4 shrink-0">
-                              <div className="flex flex-col gap-1.5">
-                                {domain.issues?.spf && (
-                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 w-fit">SPF: {domain.issues.spf}</span>
-                                )}
-                                {domain.issues?.dmarc && (
-                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 w-fit">DMARC: {domain.issues.dmarc}</span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                        {bulkDomains.length === 0 && (
-                          <tr>
-                            <td colSpan={3} className="p-16 text-center text-white/30 text-base">No fixable domains currently available.</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {isRemediatingBulk ? (
-                  <div className="flex flex-col gap-4 w-full max-w-md bg-white/[0.03] border border-white/10 p-6 rounded-lg mb-8">
-                    <div className="flex items-center justify-between text-base font-medium text-white/90">
-                      <span>Remediating Domains...</span>
-                      <span className="text-blue-400">
-                        {Math.round((bulkRemediateProgress.completed / Math.max(1, bulkRemediateProgress.total)) * 100)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
-                      <div
-                        className="bg-blue-500 h-full transition-all duration-300 rounded-full"
-                        style={{ width: `${(bulkRemediateProgress.completed / Math.max(1, bulkRemediateProgress.total)) * 100}%` }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-sm mt-1">
-                      <span className="text-white/60">
-                        {bulkRemediateProgress.completed} / {bulkRemediateProgress.total} completed
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-emerald-400 font-medium tracking-wide">✓ {bulkRemediateProgress.success}</span>
-                        {bulkRemediateProgress.failed > 0 && (
-                          <span className="text-rose-400 font-medium tracking-wide">✗ {bulkRemediateProgress.failed}</span>
-                        )}
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="bg-white/[0.03] border border-white/10 rounded-lg p-6 flex-1">
+                          <p className="text-white/40 text-[11px] uppercase tracking-wider mb-2 font-semibold">Total Eligible</p>
+                          <p className="text-4xl font-bold text-white tracking-tight">{bulkDomains.length}</p>
+                        </div>
+                        <div className="bg-white/[0.03] border border-blue-500/20 rounded-lg p-6 flex-1 relative overflow-hidden">
+                          <div className="absolute inset-0 bg-blue-500/5 pointer-events-none" />
+                          <p className="text-blue-400/60 text-[11px] uppercase tracking-wider mb-2 font-semibold relative z-10">Selected Targets</p>
+                          <p className="text-4xl font-bold text-blue-400 tracking-tight relative z-10">{selectedDomains.length}</p>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3 mb-8">
-                    <button
-                      onClick={handleBulkRemediate}
-                      disabled={selectedDomains.length === 0}
-                      className="h-12 px-8 bg-blue-600 hover:bg-blue-500 text-white text-base font-bold rounded-lg transition-all disabled:opacity-50 cursor-pointer shrink-0 shadow-xl shadow-blue-500/20"
-                    >
-                      Execute Bulk Fix ({selectedDomains.length} targets)
-                    </button>
-                  </div>
-                )}
 
-                <div className="w-full border border-white/10 bg-[#161618] rounded-xl p-6">
-                  <p className="text-xs font-bold tracking-wider text-white/40 mb-3 uppercase flex items-center gap-2">
-                    <ShieldCheck size={16} className="text-blue-400" /> Target Safety Payload
-                  </p>
-                  <p className="text-base font-mono text-emerald-400/90 tracking-wide">SPF: v=spf1 include:_spf.google.com ~all</p>
-                  <p className="text-base font-mono text-blue-400/90 tracking-wide mt-2">DMARC: v=DMARC1; p=reject; pct=100; ...</p>
+                      <div className="w-full bg-[#161618] border border-white/10 rounded-lg mb-8 overflow-hidden flex flex-col flex-1 min-h-[300px]">
+                        <div className="bg-white/5 px-6 py-4 flex items-center justify-between border-b border-white/10 shrink-0">
+                          <span className="text-sm font-medium text-white/90">Eligible Domains ({bulkDomains.length})</span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setSelectedDomains(bulkDomains.map(d => d._id))}
+                              className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm font-medium border border-blue-500/20 rounded transition-all cursor-pointer"
+                            >
+                              Select All
+                            </button>
+                            <button
+                              onClick={() => setSelectedDomains([])}
+                              className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white border border-white/10 rounded transition-all text-sm font-medium cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                        <div className="overflow-y-auto flex-1 h-[0px]">
+                          <table className="w-full text-left border-collapse">
+                            <thead className="sticky top-0 bg-[#161618] border-b border-white/5 z-10">
+                              <tr>
+                                <th className="p-4 pl-6 w-12 text-white/40 font-medium text-[11px] uppercase">
+                                  <input
+                                    type="checkbox"
+                                    className="rounded border-none bg-white/10 checked:bg-blue-500 focus:ring-0 cursor-pointer"
+                                    checked={bulkDomains.length > 0 && selectedDomains.length === bulkDomains.length}
+                                    onChange={(e) => {
+                                      if (e.target.checked) setSelectedDomains(bulkDomains.map(d => d._id));
+                                      else setSelectedDomains([]);
+                                    }}
+                                  />
+                                </th>
+                                <th className="p-4 text-[11px] uppercase font-medium text-white/40 tracking-wider">Domain</th>
+                                <th className="p-4 text-[11px] uppercase font-medium text-white/40 tracking-wider">Detected Issues</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                              {bulkDomains.map(domain => (
+                                <tr key={domain._id} className="hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => handleSelectDomain(domain._id)}>
+                                  <td className="p-4 pl-6 w-12" onClick={e => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      className="rounded border-none bg-white/10 checked:bg-blue-500 focus:ring-0 cursor-pointer"
+                                      checked={selectedDomains.includes(domain._id)}
+                                      onChange={() => handleSelectDomain(domain._id)}
+                                    />
+                                  </td>
+                                  <td className="p-4 text-[14px] text-white/90 font-medium">{domain.domain}</td>
+                                  <td className="p-4 shrink-0">
+                                    <div className="flex flex-col gap-1.5">
+                                      {domain.issues?.spf && (
+                                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 w-fit">SPF: {domain.issues.spf}</span>
+                                      )}
+                                      {domain.issues?.dmarc && (
+                                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 w-fit">DMARC: {domain.issues.dmarc}</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                              {bulkDomains.length === 0 && (
+                                <tr>
+                                  <td colSpan={3} className="p-16 text-center text-white/30 text-base">No fixable domains currently available.</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {isRemediatingBulk ? (
+                        <div className="flex flex-col gap-4 w-full bg-white/[0.03] border border-white/10 p-6 rounded-lg">
+                          <div className="flex items-center justify-between text-base font-medium text-white/90">
+                            <span>Remediating Domains...</span>
+                            <span className="text-blue-400">
+                              {Math.round((bulkRemediateProgress.completed / Math.max(1, bulkRemediateProgress.total)) * 100)}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-white/10 rounded-full h-3 overflow-hidden">
+                            <div
+                              className="bg-blue-500 h-full transition-all duration-300 rounded-full"
+                              style={{ width: `${(bulkRemediateProgress.completed / Math.max(1, bulkRemediateProgress.total)) * 100}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-sm mt-1">
+                            <span className="text-white/60">
+                              {bulkRemediateProgress.completed} / {bulkRemediateProgress.total} completed
+                            </span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-emerald-400 font-medium tracking-wide">✓ {bulkRemediateProgress.success}</span>
+                              {bulkRemediateProgress.failed > 0 && (
+                                <span className="text-rose-400 font-medium tracking-wide">✗ {bulkRemediateProgress.failed}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={handleBulkRemediate}
+                            disabled={selectedDomains.length === 0}
+                            className="h-12 w-full bg-blue-600 hover:bg-blue-500 text-white text-base font-bold rounded-lg transition-all disabled:opacity-50 cursor-pointer shadow-xl shadow-blue-500/20"
+                          >
+                            Execute Bulk Fix ({selectedDomains.length} targets)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
+
             </div>
           </div>
         )}
+
+
 
         {/* TAB 3: CLOUDFLARE FLEET */}
         {activeTab === 'fleet' && (
