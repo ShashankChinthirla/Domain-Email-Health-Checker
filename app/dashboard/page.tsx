@@ -958,17 +958,6 @@ function UserDashboardContent() {
                   </button>
 
                   <button
-                    onClick={() => updateUrlParams({ action: 'export' })}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all",
-                      selectedAction === 'export' ? "bg-white/10 text-white font-medium" : "text-white/50 hover:bg-white/5 hover:text-white"
-                    )}
-                  >
-                    <Search className="w-4 h-4 shrink-0" />
-                    <span>Data Extraction</span>
-                  </button>
-
-                  <button
                     onClick={() => updateUrlParams({ action: 'connect' })}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all cursor-pointer",
@@ -977,6 +966,17 @@ function UserDashboardContent() {
                   >
                     <UserPlus className="w-4 h-4 shrink-0" />
                     <span>Domain Assigner</span>
+                  </button>
+
+                  <button
+                    onClick={() => updateUrlParams({ action: 'export' })}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all",
+                      selectedAction === 'export' ? "bg-white/10 text-white font-medium" : "text-white/50 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    <Search className="w-4 h-4 shrink-0" />
+                    <span>Data Extraction</span>
                   </button>
                 </div>
               </div>
