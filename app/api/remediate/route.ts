@@ -33,7 +33,8 @@ async function fetchCfApi(endpoint: string, apiToken: string, options: any = {})
 
 function generateUpdatedSpf(rawSpf: string | null): string | null {
     if (!rawSpf || rawSpf.toLowerCase() === 'missing') {
-        return null;
+        // Provide a highly compatible baseline SPF policy if the domain has none.
+        return 'v=spf1 include:_spf.google.com ~all';
     }
     // Replace hard fails or neutral with soft fail
     return rawSpf.replace(/-all|\?all/g, '~all');
@@ -49,7 +50,8 @@ function ensureMailto(val: string): string {
 
 function generateUpdatedDmarc(rawDmarc: string | null, domain: string): string | null {
     if (!rawDmarc || rawDmarc.toLowerCase() === 'missing') {
-        return null; // DO NOT generate a new record from scratch if completely missing
+        // Generate a strict baseline DMARC record if completely missing
+        return `v=DMARC1; p=reject; sp=reject; pct=100; rua=mailto:dmarc-reports@${domain}; adkim=r; aspf=r;`;
     }
 
     let isAlreadyStrict = false;
@@ -178,12 +180,14 @@ export async function POST(request: NextRequest) {
         // 3. Update or Create SPF
         if (newSpf && newSpf !== rawSpf) {
             console.log(`📤 Updating SPF: ${rawSpf || 'Missing'} -> ${newSpf}`);
-            if (spfRecords.length > 0) {
+            if (rawSpf && spfRecords.length > 0) {
+                // If an existing actual SPF record was found, overwrite it
                 await fetchCfApi(`/zones/${zoneId}/dns_records/${spfRecords[0].id}`, apiToken, {
                     method: 'PUT',
                     body: JSON.stringify({ type: 'TXT', name: domain, content: newSpf, comment: "Auto-secured by DomainGuard V2" })
                 });
             } else {
+                // Otherwise, append a brand new record (preserves existing TXT like google-site-verification)
                 await fetchCfApi(`/zones/${zoneId}/dns_records`, apiToken, {
                     method: 'POST',
                     body: JSON.stringify({ type: 'TXT', name: domain, content: newSpf, comment: "Auto-secured by DomainGuard V2" })
@@ -196,12 +200,14 @@ export async function POST(request: NextRequest) {
         if (newDmarc && newDmarc !== rawDmarc) {
             console.log(`📤 Updating DMARC: ${rawDmarc || 'Missing'} -> ${newDmarc}`);
             const dmarcName = `_dmarc.${domain}`;
-            if (dmarcRecords.length > 0) {
+            if (rawDmarc && dmarcRecords.length > 0) {
+                // If an existing actual DMARC record was found, overwrite it
                 await fetchCfApi(`/zones/${zoneId}/dns_records/${dmarcRecords[0].id}`, apiToken, {
                     method: 'PUT',
                     body: JSON.stringify({ type: 'TXT', name: dmarcName, content: newDmarc, comment: "Auto-secured by DomainGuard V2" })
                 });
             } else {
+                // Otherwise, append a brand new record
                 await fetchCfApi(`/zones/${zoneId}/dns_records`, apiToken, {
                     method: 'POST',
                     body: JSON.stringify({ type: 'TXT', name: dmarcName, content: newDmarc, comment: "Auto-secured by DomainGuard V2" })
@@ -225,6 +231,16 @@ export async function POST(request: NextRequest) {
             if (updatedSpf) delete newIssuesObj.spf;
             if (updatedDmarc) delete newIssuesObj.dmarc;
 
+            const backupState = {
+                timestamp: new Date().toISOString(),
+                issuesDetected: doc.issuesDetected,
+                status: doc.status,
+                issueCategory: doc.issueCategory,
+                issues: doc.issues,
+                rawSpf,
+                rawDmarc
+            };
+
             await domainsCollection.updateOne({ _id: doc._id }, {
                 $set: {
                     originalSpfFull: rawSpf,
@@ -235,8 +251,11 @@ export async function POST(request: NextRequest) {
                     issueCategory: 'Needs_Scan', // Force the matrix to pick it up immediately
                     issuesDetected: newIssuesDetected,
                     issues: newIssuesObj
+                },
+                $push: {
+                    backups: backupState
                 }
-            });
+            } as any);
 
             return NextResponse.json({
                 success: true,
