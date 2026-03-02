@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
-import { ShieldCheck, Activity as ActivityIcon, CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Zap, Globe, Search, ChevronLeft, ChevronRight, MoreVertical, LayoutDashboard, Server, TerminalSquare, RefreshCw, Play } from 'lucide-react';
+import { ShieldCheck, Activity as ActivityIcon, CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Zap, Globe, Search, ChevronLeft, ChevronRight, MoreVertical, LayoutDashboard, Server, TerminalSquare, RefreshCw, Play, UserPlus, UploadCloud } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { cn } from '@/lib/utils';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
@@ -29,6 +29,7 @@ interface MongoDomain {
   issuesDetected: number;
   timestamp: string | null;
   user?: string;
+  assignedOwner?: string;
   issueCategory?: string;
   issues?: {
     spf?: string;
@@ -68,8 +69,8 @@ function UserDashboardContent() {
   const limitParam = parseInt(searchParams.get('limit') || '50', 10);
   const itemsPerPage = isNaN(limitParam) ? 50 : limitParam;
 
-  const actionParam = searchParams.get('action') as 'sync' | 'fix' | 'export' | 'bulk' | null;
-  const selectedAction = actionParam && ['sync', 'fix', 'export', 'bulk'].includes(actionParam) ? actionParam : 'sync';
+  const actionParam = searchParams.get('action') as 'sync' | 'fix' | 'export' | 'bulk' | 'connect' | null;
+  const selectedAction = actionParam && ['sync', 'fix', 'export', 'bulk', 'connect'].includes(actionParam) ? actionParam : 'sync';
 
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
 
@@ -145,6 +146,76 @@ function UserDashboardContent() {
 
   const [domains, setDomains] = useState<MongoDomain[]>([]);
   const [bulkDomains, setBulkDomains] = useState<MongoDomain[]>([]);
+
+  const [isMapping, setIsMapping] = useState(false);
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsMapping(true);
+    const toastId = toast.loading('Parsing spreadsheet...');
+
+    try {
+      const XLSX = await import('xlsx');
+
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const data = XLSX.utils.sheet_to_json(worksheet) as Record<string, any>[];
+
+      const mappings: { domain: string; owner: string }[] = [];
+      data.forEach(row => {
+        let domainVal = null;
+        let ownerVal = null;
+
+        for (const key of Object.keys(row)) {
+          const lowerKey = key.toLowerCase();
+          if (lowerKey.includes('domain') || lowerKey.includes('website') || lowerKey.includes('url')) domainVal = row[key];
+          if (lowerKey.includes('user') || lowerKey.includes('owner') || lowerKey.includes('email') || lowerKey.includes('client')) ownerVal = row[key];
+        }
+
+        if (domainVal && ownerVal && typeof domainVal === 'string' && typeof ownerVal === 'string') {
+          mappings.push({ domain: domainVal, owner: ownerVal });
+        }
+      });
+
+      if (mappings.length === 0) {
+        toast.error('Could not auto-detect Domain and Owner columns in spreadsheet.', { id: toastId });
+        setIsMapping(false);
+        return;
+      }
+
+      toast.loading(`Found ${mappings.length} mappings. Connecting to database...`, { id: toastId });
+      const idToken = await user?.getIdToken();
+      if (!idToken) throw new Error("Authentication failed");
+
+      const response = await fetch('/api/map-owners', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ mappings })
+      });
+
+      const resData = await response.json();
+      if (!resData.success) {
+        throw new Error(resData.error || 'Failed to map owners');
+      }
+
+      toast.success(resData.message, { id: toastId });
+      setRefreshKey(prev => prev + 1);
+
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to parse file.', { id: toastId });
+    } finally {
+      setIsMapping(false);
+      event.target.value = '';
+    }
+  };
+
   const [totalPages, setTotalPages] = useState(1);
   const [totalDomainsMatching, setTotalDomainsMatching] = useState(0);
   const [isDomainsLoading, setIsDomainsLoading] = useState(true);
@@ -896,6 +967,17 @@ function UserDashboardContent() {
                     <Search className="w-4 h-4 shrink-0" />
                     <span>Data Extraction</span>
                   </button>
+
+                  <button
+                    onClick={() => updateUrlParams({ action: 'connect' })}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-all cursor-pointer",
+                      selectedAction === 'connect' ? "bg-white/10 text-white font-medium" : "text-white/50 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    <UserPlus className="w-4 h-4 shrink-0" />
+                    <span>Domain Assigner</span>
+                  </button>
                 </div>
               </div>
 
@@ -1108,6 +1190,34 @@ function UserDashboardContent() {
                       )}
                     </div>
                   )}
+
+                  {/* DETAIL VIEW: CONNECT USER */}
+                  {selectedAction === 'connect' && (
+                    <div className="flex flex-col text-left">
+                      <h3 className="text-2xl font-semibold text-white mb-2 tracking-tight">Domain Assigner</h3>
+                      <p className="text-white/60 text-sm mb-8">
+                        Bulk map user or client emails to specific domains in your fleet by uploading a CSV or Excel spreadsheet.
+                      </p>
+
+                      <div className="border-2 border-dashed border-white/20 rounded-xl p-10 flex flex-col items-center justify-center text-center transition-colors hover:border-white/40 hover:bg-white/5 relative">
+                        <input
+                          type="file"
+                          accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                          onChange={handleFileUpload}
+                          disabled={isMapping}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                        />
+                        <UploadCloud className={cn("w-10 h-10 mb-4 transition-all duration-300", isMapping ? "text-blue-500 animate-pulse" : "text-white/40")} />
+                        <span className="text-sm font-medium text-white mb-1">
+                          {isMapping ? 'Ingesting Mapper Configuration...' : 'Click or Drag Spreadsheet (.csv, .xlsx)'}
+                        </span>
+                        <span className="text-xs text-white/40 max-w-xs">
+                          Your spreadsheet must contain columns resembling "Domain" and "Owner" or "User". We will automatically match the column names.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </div>
 
@@ -1226,9 +1336,15 @@ function UserDashboardContent() {
                                 {entity.domain}
                               </td>
                               <td className="p-4">
-                                <span className="text-[12px] text-gray-400 font-medium italic bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-md">
-                                  no user found
-                                </span>
+                                {entity.assignedOwner ? (
+                                  <span className="text-[12px] text-gray-700 font-medium bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-md">
+                                    {entity.assignedOwner}
+                                  </span>
+                                ) : (
+                                  <span className="text-[12px] text-gray-400 font-medium italic bg-gray-50 border border-gray-100 px-2.5 py-1 rounded-md">
+                                    no user found
+                                  </span>
+                                )}
                               </td>
                               <td className="p-4">
                                 {entity.status === 'Secure' ? (

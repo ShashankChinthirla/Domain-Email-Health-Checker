@@ -195,7 +195,8 @@ export async function getPaginatedDomains(token: string, query = "", issueFilter
             timestamp: d.timestamp ? d.timestamp.toISOString() : null,
             user: typeof d.ownerUserId === 'string' ? d.ownerUserId : (d.user?.email || null),
             issueCategory: d.issueCategory || null,
-            issues: d.issues || {}
+            issues: d.issues || {},
+            assignedOwner: d.assignedOwner || null
         }));
 
         return {
@@ -247,7 +248,8 @@ export async function getFixableDomains(token: string) {
             timestamp: d.timestamp ? d.timestamp.toISOString() : null,
             user: typeof d.ownerUserId === 'string' ? d.ownerUserId : (d.user?.email || null),
             issueCategory: d.issueCategory || null,
-            issues: d.issues || {}
+            issues: d.issues || {},
+            assignedOwner: d.assignedOwner || null
         }));
 
         return {
