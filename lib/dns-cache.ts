@@ -1,24 +1,10 @@
 import { promises as dnsPromises, MxRecord, SoaRecord, CaaRecord } from 'dns';
 
-// Force high-capacity public resolvers if we are running locally/in background worker
-// Vercel serverless functions sometimes block outbound port 53 to custom IPs, so we fallback
-// to default system DNS if process.env.VERCEL is present.
-// We also fallback to system DNS on GitHub Actions because Azure/AWS internal resolvers have dramatically higher throughput without triggering Cloudflare UDP rate limits.
-if (!process.env.VERCEL && !process.env.GITHUB_ACTIONS && !process.env.CI) {
-    try {
-        dnsPromises.setServers([
-            '1.1.1.1', // Cloudflare Primary
-            '8.8.8.8', // Google Primary
-            '1.0.0.1', // Cloudflare Secondary
-            '8.8.4.4'  // Google Secondary
-        ]);
-        console.log('[DNS] Using high-capacity public resolvers (Cloudflare/Google)');
-    } catch (e) {
-        console.warn('[DNS] Failed to set public resolvers, using system defaults', e);
-    }
-} else {
-    console.log('[DNS] Using internal system resolvers (Vercel/GitHub Actions/CI detected)');
-}
+// Force usage of Google & Cloudflare DNS for reliability was REMOVED because
+// setServers(['1.1.1.1', ...]) caused issues on Vercel/AWS Lambda (EREFUSED) and
+// local Windows firewalls.
+// We now rely on the environment's default DNS resolver (system), which is faster and unblocked.
+console.log('[DNS] Using internal system resolvers (Safe Default)');
 
 // Cache structure: Key -> { promise, timestamp, data }
 interface CacheEntry<T> {
