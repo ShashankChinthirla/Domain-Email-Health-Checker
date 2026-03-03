@@ -42,18 +42,22 @@ async function handleScanRequest(request: NextRequest) {
 
         // 2. Extract Domain & Options
         let rawDomain: string | null = null;
-        let includeAllUrl = false;
-        let includeAllBody = false;
+        let includeAllUrl = true; // Default to true
+        let includeAllBody = true; // Default to true
 
         if (request.method === 'GET') {
             const url = new URL(request.url);
             rawDomain = url.searchParams.get('domain');
-            includeAllUrl = url.searchParams.get('include_all') === 'true';
+            if (url.searchParams.has('include_all')) {
+                includeAllUrl = url.searchParams.get('include_all') === 'true';
+            }
         } else if (request.method === 'POST') {
             try {
                 const body = await request.json();
                 rawDomain = body.domain;
-                includeAllBody = body.include_all === true;
+                if (body.include_all !== undefined) {
+                    includeAllBody = body.include_all === true;
+                }
             } catch {
                 return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
             }
