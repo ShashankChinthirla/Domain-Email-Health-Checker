@@ -15,7 +15,7 @@ interface CacheEntry<T> {
 }
 
 const cache = new Map<string, CacheEntry<any>>();
-const TTL = 10 * 60 * 1000; // 10 Minutes
+const TTL = 10 * 1000; // 10 Seconds (Matches fast refresh of external tools)
 
 // Global DNS Concurrency Control
 // Lowered from 1500 to 250 to prevent packet-drop issues and UDP socket starvation on GitHub Actions instances.
@@ -42,12 +42,29 @@ function releaseSlot(): void {
     }
 }
 
+// Dynamic Resolver Logic
+let activeResolver = dnsPromises;
+if (!process.env.VERCEL) {
+    try {
+        const { Resolver } = require('dns').promises;
+        const customResolver = new (Resolver as any)();
+        customResolver.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4', '1.0.0.1']);
+        activeResolver = customResolver;
+        console.log('[DNS] Using Google/Cloudflare public resolvers to bypass stale OS cache');
+    } catch (e) {
+        console.log('[DNS] Failed to set custom resolvers, falling back to system default');
+    }
+} else {
+    console.log('[DNS] Vercel environment detected. Using safe system resolvers');
+}
+
 /**
  * Generic wrapper to cache DNS calls with global concurrency
  */
 async function cachedResolve<T>(
     key: string,
-    resolveFn: () => Promise<T>,
+    fnName: keyof typeof dnsPromises,
+    args: any[],
     retryCount = 0 // Default to NO retry for bulk speed
 ): Promise<T> {
     const now = Date.now();
@@ -72,16 +89,30 @@ async function cachedResolve<T>(
             );
 
             try {
-                return await Promise.race([resolveFn(), timeoutPromise]);
+                // Execute using the dynamic resolver
+                const result = await Promise.race([
+                    (activeResolver as any)[fnName](...args),
+                    timeoutPromise
+                ]);
+                releaseSlot();
+                return result;
             } catch (err: any) {
+                releaseSlot();
                 lastError = err;
+
+                // If custom resolver got refused (e.g., Firewall blocking Port 53),
+                // completely abandon custom resolvers globally and fallback to OS System resolver.
+                if (activeResolver !== dnsPromises && (err.code === 'EREFUSED' || err.code === 'ECONNREFUSED' || err.message?.includes('socket'))) {
+                    console.warn(`[DNS] Core DNS Blocked (Port 53) - Error: ${err.code || err.message}. Permanently falling back to OS system resolver.`);
+                    activeResolver = dnsPromises;
+                    throw err; // Will retry in the next loop using the system resolver
+                }
+
                 const shouldRetry = attempt < retryCount &&
-                    (err.message === 'DNS Timeout' || err.code === 'ETIMEOUT' || err.code === 'ESERVFAIL');
+                    (err.message === 'DNS Timeout' || err.code === 'ETIMEOUT' || err.code === 'ESERVFAIL' || err.code === 'EREFUSED');
 
                 if (!shouldRetry) throw err;
                 await new Promise(resolve => setTimeout(resolve, 300));
-            } finally {
-                releaseSlot();
             }
         }
         throw lastError;
@@ -101,35 +132,35 @@ async function cachedResolve<T>(
 
 // Exported wrappers matching used methods
 export async function resolve4(hostname: string): Promise<string[]> {
-    return cachedResolve(`A:${hostname}`, () => dnsPromises.resolve4(hostname));
+    return cachedResolve(`A:${hostname}`, 'resolve4', [hostname]);
 }
 
 export async function resolve6(hostname: string): Promise<string[]> {
-    return cachedResolve(`AAAA:${hostname}`, () => dnsPromises.resolve6(hostname));
+    return cachedResolve(`AAAA:${hostname}`, 'resolve6', [hostname]);
 }
 
 export async function resolveMx(hostname: string): Promise<MxRecord[]> {
-    return cachedResolve(`MX:${hostname}`, () => dnsPromises.resolveMx(hostname));
+    return cachedResolve(`MX:${hostname}`, 'resolveMx', [hostname]);
 }
 
 export async function resolveTxt(hostname: string): Promise<string[][]> {
-    return cachedResolve(`TXT:${hostname}`, () => dnsPromises.resolveTxt(hostname));
+    return cachedResolve(`TXT:${hostname}`, 'resolveTxt', [hostname]);
 }
 
 export async function resolveNs(hostname: string): Promise<string[]> {
-    return cachedResolve(`NS:${hostname}`, () => dnsPromises.resolveNs(hostname));
+    return cachedResolve(`NS:${hostname}`, 'resolveNs', [hostname]);
 }
 
 export async function resolveCname(hostname: string): Promise<string[]> {
-    return cachedResolve(`CNAME:${hostname}`, () => dnsPromises.resolveCname(hostname));
+    return cachedResolve(`CNAME:${hostname}`, 'resolveCname', [hostname]);
 }
 
 export async function resolveSoa(hostname: string): Promise<SoaRecord> {
-    return cachedResolve(`SOA:${hostname}`, () => dnsPromises.resolveSoa(hostname));
+    return cachedResolve(`SOA:${hostname}`, 'resolveSoa', [hostname]);
 }
 
 export async function resolveCaa(hostname: string): Promise<CaaRecord[]> {
-    return cachedResolve(`CAA:${hostname}`, () => dnsPromises.resolveCaa(hostname));
+    return cachedResolve(`CAA:${hostname}`, 'resolveCaa', [hostname]);
 }
 
 // setServers is a dummy/unsupported when using native promises directly for some providers,

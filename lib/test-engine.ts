@@ -632,7 +632,7 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
                 tests.push({ name: 'DMARC Policy', status: 'Pass', info: 'Quarantine', reason: 'Suspicious emails are sent to spam.', recommendation: 'Consider moving to reject for full protection.' });
             } else {
                 // DMARC p=none is informational only - not an error
-                tests.push({ name: 'DMARC Policy', status: 'Warning', info: 'None (Advisory)', reason: 'Policy is set to "none", which only monitors email—no enforcement. This is common during initial DMARC setup.', recommendation: 'When ready, upgrade to quarantine or reject for full protection.', host: domain, result: 'DMARC Policy Monitoring Only' });
+                tests.push({ name: 'DMARC Policy', status: 'Error', info: 'None (Advisory)', reason: 'Policy is set to "none", which only monitors email—no enforcement. This is common during initial DMARC setup.', recommendation: 'When ready, upgrade to quarantine or reject for full protection.', host: domain, result: 'DMARC Policy Monitoring Only' });
             }
         } else {
             tests.push({ name: 'DMARC Policy', status: 'Error', info: 'Missing p= tag', reason: 'Policy tag is mandatory.', recommendation: 'Add p=reject, p=quarantine, or p=none.', host: domain, result: 'DMARC Record Missing' });
@@ -746,7 +746,7 @@ async function runDMARCTests(domain: string): Promise<{ tests: TestResult[], raw
             tests.push({ name: 'BIMI Readiness', status: 'Pass', info: 'Ready', reason: 'DMARC policy supports BIMI implementation.', recommendation: 'You can now set up a BIMI record.', host: domain, result: 'BIMI Ready' });
         } else {
             // BIMI is advisory – not a security requirement
-            tests.push({ name: 'BIMI Readiness', status: 'Warning', info: 'Not Ready', reason: 'BIMI requires p=quarantine/reject and pct=100. Optional but recommended for brand visibility.', recommendation: 'Strengthen DMARC policy when ready to enable BIMI.', host: domain, result: 'BIMI Not Ready' });
+            tests.push({ name: 'BIMI Readiness', status: 'Error', info: 'Not Ready', reason: 'BIMI requires p=quarantine/reject and pct=100. Optional but recommended for brand visibility.', recommendation: 'Strengthen DMARC policy when ready to enable BIMI.', host: domain, result: 'BIMI Not Ready' });
         }
 
     } catch (err: any) {
@@ -1224,6 +1224,30 @@ export async function runFullHealthCheck(domain: string): Promise<FullHealthRepo
         }
     ];
 
+    // 4.5. Cross-Category Dependency Checks (MxToolbox behavior emulation)
+    // If DMARC policy is insecure (e.g. p=none), MxToolbox also flags SPF and MX with errors
+    const dmarcPolicyTest = dmarcRes.tests.find((t: TestResult) => t.name === 'DMARC Policy');
+    const isDmarcWeak = dmarcPolicyTest && (dmarcPolicyTest.status === 'Error' || dmarcPolicyTest.info.includes('None'));
+
+    if (isDmarcWeak) {
+        spfRes.tests.push({
+            name: 'SPF DMARC Dependency',
+            status: 'Error',
+            info: 'Insecure DMARC',
+            reason: 'It is recommended to use a quarantine or reject policy. To enable BIMI, it is required to have one of these at 100%.',
+            recommendation: 'Upgrade DMARC policy to quarantine or reject.',
+            category: 'SPF'
+        });
+
+        dnsResults.push({
+            name: 'MX DMARC Dependency',
+            status: 'Error',
+            info: 'Insecure DMARC',
+            reason: 'It is recommended to use a quarantine or reject policy. To enable BIMI, it is required to have one of these at 100%.',
+            recommendation: 'Upgrade DMARC policy to quarantine or reject.',
+            category: 'DNS'
+        });
+    }
 
     // 5. Aggregate Problems
     // Helper to attach category
