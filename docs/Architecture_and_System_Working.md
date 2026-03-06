@@ -3,19 +3,19 @@
 ## 1. Project Overview
 The **Domain Health Checker** is a full-stack SaaS application built to audit and monitor internet domains. It automatically interrogates DNS networking layers, email security authentication protocols (SPF, DKIM, DMARC), and web server availability, translating complex network data into actionable insights via a modern web interface.
 
-This document describes the high-level architecture of the system, illustrating how the frontend, backend APIs, worker modules, and database seamlessly operate together.
+This document describes the high-level architecture of the system, illustrating how the frontend, backend APIs, worker modules, database, and **Third-Party Integrations (Cloudflare)** seamlessly operate together.
 
 ---
 
 ## 2. High-Level Architecture Diagram
-The application utilizes a stateless API architecture coupled with a modern reactive frontend.
+The application utilizes a stateless API architecture coupled with a modern reactive frontend, supported by secure API integrations for automated infrastructure discovery.
 
 ```text
        ┌────────────────────────────────────────────────────────┐
        │                 User Web Browser                       │
        │  (React / Next.js Client-Side Application)             │
-       │  - UI Components (Hero, Dashboard, ResultTable)        │
-       │  - State Management (React Hooks)                      │
+       │  - Authentication Context (Firebase Auth)              │
+       │  - UI Dashboards (Admin Action Center, Settings)       │
        └──────────────────────────┬─────────────────────────────┘
                                   │
                           (HTTPS JSON Payload)
@@ -23,9 +23,9 @@ The application utilizes a stateless API architecture coupled with a modern reac
        ┌──────────────────────────▼─────────────────────────────┐
        │                   Next.js API Routes                   │
        │                 (Backend Entry Points)                 │
-       │  - POST /api/scan                                      │
-       │  - POST /api/recommend                                 │
-       │  - GET /api/admin/domains                              │
+       │  - POST /api/scan (Core Testing)                       │
+       │  - POST /api/sync-cloudflare (Metadata Fetching)       │
+       │  - GET /api/admin/domains (Database Retrieval)         │
        └──────────────────────────┬─────────────────────────────┘
                                   │
        ┌──────────────────────────▼─────────────────────────────┐
@@ -39,64 +39,64 @@ The application utilizes a stateless API architecture coupled with a modern reac
        └──────────────────────────┬─────────────────────────────┘
                                   │
        ┌──────────────────────────▼─────────────────────────────┐
-       │         Data Aggregation & Issue Classification        │
+       │                 Persistent Storage                     │
+       │             (MongoDB - `issue_domains`)                │
        └──────────────────────────┬─────────────────────────────┘
                                   │
        ┌──────────────────────────▼─────────────────────────────┐
-       │                 Persistent Storage                     │
-       │             (MongoDB - `issue_domains`)                │
+       │               3rd Party Integrations                   │
+       │         (Cloudflare API / Python Cron Workers)         │
        └────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Component Interaction Flow
+## 3. Core Architectural Lifecycles
 
-The system operates synchronously for the end-user while executing massively parallel tasks in the background.
+### 3.1. User Authentication (Firebase)
+The system requires strict identity validation for administrative control.
+1. User logs in via **Firebase Identity Platform** (Email/Password or OAuth).
+2. The `onAuthStateChanged` context wrapper on the frontend detects the JWT Token.
+3. The Next.js frontend checks the `isAdmin()` logic against a MongoDB collection of authorized admin emails.
+4. If unauthorized, the `Layout.tsx` cleanly rejects them from specific sub-routes (e.g., `/settings`, `/admin`).
 
-### 3.1. User Interaction (Frontend)
-1. The user navigates to the application and enters a target domain (e.g., `example.com`) in the **Hero** or **DomainChecker** component.
-2. The user clicks **Scan**.
-3. The React component transitions to a loading state displaying a `ParticleBackground` or progress indicator.
-4. A `fetch` POST request containing the domain is dispatched to the backend.
+### 3.2. Cloudflare Fleet "Sync & Scan"
+Instead of requiring users to manually type hundreds of domains, the architecture supports **Automated Fleet Discovery**.
+1. An administrator securely saves a Cloudflare API Token in the **Settings** page. (This token is encrypted via AES-GCM 256-bit logic before hitting MongoDB).
+2. In the **Action Center**, the admin clicks `Sync Cloudflare`.
+3. The `/api/sync-cloudflare` routes decrypts the token, hits Cloudflare’s `api.cloudflare.com/client/v4/zones` endpoint, and pulls down every domain owned by the organization.
+4. The system calculates the difference between existing DB domains and the newly found domains, cleanly upserting them with a status of `Needs_Scan`.
 
-### 3.2. API Ingestion (Backend Router)
-1. The Next.js API route (`/api/scan`) receives the request.
-2. An initial middleware layer purifies the input—stripping out `https://`, spaces, or invalid directory paths, ensuring only a clean Top-Level string (FQDN) is injected into the engine.
-
-### 3.3. Processing Engine (The Core)
-1. The `test-engine.ts` initiates its "Event Loop" using `Promise.allSettled()`.
-2. **Phase 1 (Routing):** It triggers `dns-cache.ts` to locate the native IP addresses and Nameservers. (Falls back to Google DNS-over-HTTPS if standard sockets are blocked).
-3. **Phase 2 (Deep Scan):** Using Phase 1 data, the engine aggressively fires parallel commands:
-   * It crawls `http://` and `https://` checking for `200 OK` status and redirect boundaries.
-   * It reverses the assigned IP and queries Spamhaus / Spamcop via DNSBL for spam blacklisting.
-   * It extracts `TXT` records, recursively chasing `SPF` includes to count DNS loads, and evaluates `DMARC` tag strictness.
-
-### 3.4. Classification & Storage
-1. All modules return their findings (e.g., `DMARC p=none`).
-2. The engine evaluates these findings against Business Logic Rules (e.g., `p=none` = Warning).
-3. The engine aggregates the categories into a single `FullHealthReport` JSON object.
-4. MongoDB upserts the object into the `issue_domains` collection, linking the domain to the logged-in User ID (if authenticated) and stamping a `last_scanned_at` timestamp.
-
-### 3.5. Result Rendering (Frontend)
-1. The frontend receives the `HTTP 200` JSON response.
-2. The React states populate the `ResultTable` and `HealthCards` components.
-3. The UI color-codes findings (Green/Red/Yellow) based on severity, expanding detailed accordions for failed checks, giving the user immediate visual feedback.
+### 3.3. Bulk Remediate & Automation
+1. Domains flagged with fundamental errors (Missing SPF/DMARC) appear in the Admin Dashboard.
+2. Background workers (Node Cron or Python Sub-processes) continuously poll the MongoDB `issue_domains` collection.
+3. The workers spin up parallel execution threads to batch-scan the domains asynchronously, writing the health status back to the DB cleanly.
 
 ---
 
-## 4. Key Architectural Decisions
+## 4. Database Architecture (MongoDB)
 
-* **Stateless API:** The backend retains no connection-specific memory. Each request is atomic, making the application infinitely horizontally scalable strictly via Kubernetes or Vercel Edge networks.
-* **Aggressive Parallelization:** Checking 5 blacklists + HTTP + 15 DNS records takes exactly as long as the single slowest connection (max ~5 seconds) instead of adding them all up (which would take ~30 seconds serially).
-* **Database Upserting:** MongoDB utilizes an `upsert: true` filter on the domain name. This means when a user clicks "Rescan", the system overwrites the existing history record instead of creating duplicates, ensuring the admin dashboard always reflects the live reality of the infrastructure.
-* **Component-Based UI:** The React structure strictly follows atomic design. The `DomainChecker.tsx` handles state, but relies on dumb components like `RawRecord.tsx` and `VerdictBanner.tsx` to handle display rendering.
+The data model uses distinct collections to properly segregate state, logging, and security.
+
+* **`users` / `roles`**: Validates which Firebase emails have Root Administrator status.
+* **`user_settings`**: Stores JSON configuration (e.g., specific Outreach Email templates, chosen Email Client routers like Gmail vs Outlook) mapped to specific Admin User IDs.
+* **`integrations`**: Stores the AES-GCM encrypted API tokens for 3rd party providers like Cloudflare.
+* **`issue_domains`**: The master table of all discovered infrastructure, housing the massively detailed JSON outputs of every `A`, `MX`, and `TXT` record lookup.
 
 ---
 
-## 5. System Environments
+## 5. Adding Videos to Documentation
 
-The architecture is built for standard cloud-native deployment:
-* **Production Build:** `npm run build` statically compiles React components into HTML/CSS chunks while minifying TypeScript node routes.
-* **Database Layer:** Hosted securely off-cluster (e.g., MongoDB Atlas). Connects via standard `MONGODB_URI` connection strings over TLS.
-* **Authentication Layer:** Firebase sets secure JWT browser cookies to determine if the active session possesses an `Admin` or standard user role, thereby blocking unauthorized API access dynamically at the Next.js router level.
+Since this documentation is viewed in Markdown environments (like GitHub, VSCode, or standard CMS readers), you can **absolutely embed videos**. 
+
+If your video is stored inside your codebase (e.g., inside the `domain_healthcheck/public/` folder), you can simply use the standard HTML `<video>` tag directly inside your `.md` files!
+
+**Example Syntax:**
+```html
+<h2>Tutorial Demo</h2>
+<video width="100%" controls>
+  <source src="/my-demo-video.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+```
+*Note: If pushing to GitHub, ensuring the video is small (<10MB) or hosting it on YouTube/Vimeo and using a GIF preview is highly recommended for load speeds.*

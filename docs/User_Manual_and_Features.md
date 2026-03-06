@@ -1,73 +1,69 @@
-# Domain Health Checker - End User Manual & Feature Guide
+# User Manual, Educational Guide & Core Features
 
-Welcome to the Domain Health Checker! This tool is designed to make internet infrastructure simple. Whether you are an IT professional making sure your website is online, or a marketing manager ensuring your newsletters don't go to the spam folder, this software automatically finds and fixes invisible problems with your domain.
+Welcome to the **Domain Health Checker**. This detailed educational manual explains how the platform functions, specifically detailing how Administrators log in, configure Cloudflare sync scripts, manage settings, and remediate domain issues in bulk.
 
----
-
-## 1. What Can This Software Do?
-
-Think of this software as a dedicated mechanic for your internet domain. It instantly runs a 25-point inspection covering:
-
-* **Website Uptime:** Is the site down right now?
-* **Email Safety (SPF/DKIM/DMARC):** Are you protected against hackers trying to spoof your company's email address?
-* **Spam Blacklists:** Have popular security companies blocked your IP addresses from sending mail?
-* **DNS Settings:** Are your internal routing rules (like MX records and Nameservers) perfectly compliant with global internet rules?
+### Important: Adding Videos to Documentation
+If you are reading this on GitHub or a standard Markdown viewer, you can physically add videos to these documents to showcase the UI! 
+Just upload your `.mp4` into the codebase, and paste this generic HTML code inside the document:
+```html
+<video src="/my-demo-video.mp4" controls width="100%"></video>
+```
 
 ---
 
-## 2. Using the Dashboard: Step-by-Step
+## 1. Initial Authentication & Login (Firebase)
 
-### Step 1: Scanning a Single Domain
-1. Log into the application and go to the **Home** (`/`) page.
-2. You will see a large search bar labeled **"Enter a domain to analyze..."**.
-3. Type in any domain (for example, `google.com` or `yourcompany.com`). *You do not need to type `http://` or `www.`.*
-4. Click the **Analyze** or **Scan** button.
-5. The screen will display a loading animation. Please wait (this takes about 3-5 seconds as the system reaches out to dozens of servers globally).
+The application features a strictly protected Backend Admin route.
 
-### Step 2: Reading the Results (The Health Report)
-Once the scan finishes, you will see a massive dashboard of data:
-
-* **The Health Score Dial:** At the very top, you'll see a score from 0-100 indicating the total perfection of your domain.
-* **Problems Section (The Red/Yellow Box):** We instantly filter out everything that *Passed* and show you exactly what is broken right at the top. 
-* **The Full Result Table:** Scroll down to see every individual test. Look for the colorful badges:
-  * 🟢 **Pass:** Everything is perfect. No action needed.
-  * 🟡 **Warning:** The setting works, but it's not following best security practices. It should be fixed eventually.
-  * 🔴 **Critical/Error:** This is actively broken. Emails are likely bouncing or the website is currently down. Fix immediately.
+**How to Login:**
+1. Navigate to the top right of the dashboard and click the **`Admin Login`** button.
+2. An elegant blurred modal will appear. Input the secure credentials provided to you by your IT Lead.
+3. The system contacts Firebase Authentication immediately. 
+4. If your email is listed inside the root `roles` MongoDB Table as an "Admin", the top navigation bar will unlock two new tabs: **Settings** and **Action Center**.
 
 ---
 
-## 3. The "Remediate" Feature (Fixing the Problem)
+## 2. Navigating the Settings Page (`/settings`)
 
-If you have a broken `SPF` or `DMARC` record, you don't need an IT degree to figure out how to write a new one.
+Once authenticated as a root Admin, navigate to the `Settings` page. This is the command hub for dictating how the application interfaces with 3rd-party services.
 
-1. Find an Email Security row in the Result Table that says "Error".
-2. You will see a button labeled **"Remediate"** or **"Get Recommendation"**. Click it.
-3. The system will magically review your broken config and generate a **100% Secure, Copy-Paste Ready** string of text.
-4. Simply copy that text, log into your domain provider (like GoDaddy or Cloudflare), and paste it into your DNS settings!
+### 2.1. General Display
+* Customize your internal **Display Name**. This name is used exclusively inside the App to let other administrators know who is handling which configuration.
+
+### 2.2. Authentication (Integrations)
+You can directly link Cloudflare to auto-import 10,000+ domains into the app without manually typing them.
+1. Log into your Cloudflare Dashboard.
+2. Go to `My Profile` -> `API Tokens` -> `Create Token` (Read-only Zone permission).
+3. Copy the token.
+4. Back inside the App Settings `Integrations` tab, select "Cloudflare", name it "My Business Account", and paste the key. 
+5. The system instantly military-encrypts (AES-GCM 256) this key and syncs it.
+
+### 2.3. Access Control (Root Admins ONLY)
+* A specialized text-box allowing you to type multiple emails separated by commas (e.g. `john@apple.com, kate@apple.com`) and instantly grant them full Admin privileges via internal Firebase SDKs.
+* You can selectively "Revoke" any admin by clicking the red Trashcan icon next to their name.
+
+### 2.4. Outreach Defaults
+When an admin notices an invalid Domain (e.g., bad DKIM keys), they must email the infrastructure owner.
+Instead of typing the email manually every time:
+1. Input your generic Signature (e.g. *John Smith, Senior DevSecOps, 555-0000*).
+2. Input a standard text template (e.g. *Hi, we noticed an error on your domain.*).
+3. Select your Mail Provider (`Google Workspace / Gmail`, `Microsoft 365 / Outlook`, or system default).
+4. The Action Center will now automatically generate dynamic emails using these defaults when interacting with users.
 
 ---
 
-## 4. The Admin Panel (For Managing Hundreds of Domains)
+## 3. The Administration Action Center (`/admin`)
 
-If you are a Systems Administrator, checking domains "one by one" takes too long.
+This page summarizes your entire web fleet in seconds. It relies on the settings you previously configured.
 
-1. Click **Admin Dashboard** in the top navigation bar.
-2. Here you will see a giant spreadsheet (The `BulkResultsTable`) containing every single domain anyone has ever scanned on the platform.
-3. **Filter Button:** Click "Filter by: At Risk" to instantly hide all the healthy domains, exposing only the ones that need your attention.
-4. **Force Rescan All Button:** Did you just spend an hour fixing 20 broken domains in Cloudflare? Don't scan them manually again! Click this button, step away from your computer, and the system will automatically re-scan every domain in the database sequentially and update the dashboard live.
+### 3.1. Fleet Synchronization
+To rapidly analyze every domain you own:
+1. Click the blue **"Sync Cloudflare"** button at the top right of the dashboard.
+2. The UI will spin. Behind the scenes, the API connects to Cloudflare, fetches every root domain inside your account, checks the local DB to ignore duplicates, and cleanly inserts the new domains, marking them as `Needs_Scan`.
+3. A green toaster notification will appear confirming exact domain pull counts.
 
----
-
-## 5. Frequently Asked Questions & Troubleshooting
-
-**Q: I fixed my DNS in GoDaddy, but the Scanner still says it is broken!**
-A: DNS updates are not instantaneous. Sometimes it takes 15 minutes, and rarely, up to 24 hours for a change to "propagate" across the entire globe. Wait a few minutes and hit the **Scan** button again.
-
-**Q: What does "Timeout" mean?**
-A: When pinging your website, the tool waited 5 full seconds but your server never responded. This usually means your website hosting is completely offline or freezing.
-
-**Q: It says "Private IP Error", but I have an IP address!**
-A: Some companies accidentally put `192...` or `10...` IP addresses into their public DNS. These are "Local Network" IPs, meaning nobody outside of your physical office building can reach your website. The tool explicitly catches this mistake.
-
-**Q: Spamhaus says I am Blacklisted. What do I do?**
-A: This means your server IP has been caught sending vast amounts of spam. You must click the provided link to Spamhaus's website in the dashboard and fill out their "Delisting Request" form manually to prove you aren't a malicious hacker. 
+### 3.2. Automation & Bulk Remediate
+The Action Center showcases exactly which domains are `Secure` (Green) and `At Risk` (Red).
+* **Filtering and Sorting:** Use the massive dropdown toggle to isolate domains simply missing `DMARC`, or sort directly for critical `Blacklist Issues`.
+* **Outreach Execution:** If `apple.com` is flagged for Missing SPF, the owner's email will be hyperlinked blue. Click it. The system will open a brand new Google / Outlook tab *already pre-filled* with the explicit SPF failure logic appended directly beneath your custom Outreach Settings template!
+* **The Automation Terminal:** By clicking "Automation Monitor", the UI morphs into a black execution terminal. Administrators can view real-time Python/Node background logs performing the Bulk Remediations exactly as they run globally against thousands of records. You can safely download these generated CSV/XLSX results simultaneously to report to management.

@@ -1,92 +1,54 @@
-# Domain Health Checker - Frontend Architecture Documentation
+# Frontend Architecture and UI Component Documentation
 
-The frontend is a fully responsive, modern React application built on the **Next.js 15 (App Router)** framework. It utilizes TypeScript for strict prop validation and a component-based architecture for maximum code reusability.
-
----
-
-## 1. High-Level Frontend Directory Structure
-
-The system is organized logically to separate full pages (Routes) from reusable UI blocks (Components).
-
-* **`/app/`**: Contains the Next.js routing infrastructure.
-  * **`/app/page.tsx`**: The main public landing page housing the `Hero` and solitary `DomainChecker`.
-  * **`/app/dashboard/page.tsx`**: The authenticated user view.
-  * **`/app/admin/page.tsx`**: The privileged view containing the overarching data tables.
-  * **`/app/settings/page.tsx`**: Configuration and user profile management.
-* **`/components/`**: The library of isolated React UI components (e.g., Modals, Tables, Health Dials).
-* **`/contexts/`**: Contains React Context Providers (e.g., Authentication state, Theme state) that wrap the application in `layout.tsx`.
-* **`/lib/hooks.ts`**: Reusable custom React hooks (e.g., `useFetch`, `useAuth`) for managing asynchronous loading states and API interactions.
+The Domain Health Checker utilizes the modern **Next.js 14 App Router** structure with **React Server/Client Components** (`use client`). This document explains how the complex Administration, Settings, Authentication, and the standard Home dashboard operate together to provide an enterprise-grade experience.
 
 ---
 
-## 2. Core UI Components Overview
-
-### `DomainChecker.tsx` (The Brain of the UI)
-This is a "Smart Component." It manages the React state (`useState`) for the search input, the loading boolean, and the final `report` object.
-* **Functionality:** When a user types `example.com` and hits Enter, this component triggers the `fetch('/api/scan')`.
-* **Interaction:** While awaiting the response, it toggles a loading state (which renders a spinner or `ParticleBackground`). Once `Res.json()` returns, it injects the resulting payload into the downstream "Dumb Components".
-
-### Display Components (Dumb Components)
-These components take in strict TypeScript interfaces as props and simply render UI based entirely on that data.
-* **`ResultTable.tsx`**: Receives an array of `TestResult` objects. Maps over the array and outputs a structured HTML table row for each networking test (e.g. `DNS`, `A Record`). Color codes the Status column via Tailwind conditionally: `text-green-500` for Pass, `text-red-500` for Error.
-* **`HealthCards.tsx`**: Reads the global `Score` calculated by the backend. Renders a radial dial or a summary block displaying an aggregate "Health Percentage (0-100%)".
-* **`ProblemSummaryTable.tsx` / `ProblemsSection.tsx`**: Specifically filters the `report` object for *only* tests marked `Warning` or `Error`. Useful for the top of the page so a user doesn't have to scroll past 40 "Passed" tests to find the 1 broken SPF record.
-* **`RawRecord.tsx`**: A simple `<pre>` block component that safely renders the raw JSON payload for advanced users debugging API structures.
-
-### Layout Components
-* **`Navbar.tsx`**: Fixed top navigation. Includes routing links (Home, Dashboard) and crucially mounts the `NotificationDropdown.tsx` and the User Profile / `LoginModal.tsx` trigger.
-* **`Hero.tsx`**: The massive marketing banner on the root page introducing the tool to new guests.
+## 1. Global State & Authentication
+The application relies strictly on **Firebase Auth** wrapped inside React `useEffect` hooks across critical routes.
+* **Component: `LoginModal.tsx`**
+  Renders a seamless, blurred background modal requesting Google OAuth or standard structural credentials.
+* **Component: `Navbar.tsx`**
+  Global navigation head. It uses the `onAuthStateChanged` hook constantly to determine if it should render the `Admin`, `Settings`, or `Login` buttons depending on the user's active session.
 
 ---
 
-## 3. Data Flow & State Management
-
-**Authentication State**
-Firebase Auth sits on top of the App `layout.tsx`.
-1. `onAuthStateChanged` hook fires globally.
-2. If a user logs in via `LoginModal.tsx`, the Context saves the `User` object.
-3. Protected routes like `/admin/page.tsx` read this Context. If `user.role !== 'admin'`, the Next.js router executes an immediate `redirect('/')` to bounce them to safety.
-
-**Scanning Data Flow**
-```text
-[ User Types: "stripe.com" ]
-          │
-[ DomainChecker `onChange` State Updates ]
-          │
-[ Click "Scan" Button ]
-          │
-   (Triggers `async function handleScan()`)
-          ├─► `setLoading(true)`
-          ├─► `setError(null)`
-          ├─► `await fetch('/api/scan')`
-          │           │
-          ◄───────────┘ (Receives JSON)
-          │
-   (Response Handling)
-   if Status 200:
-       ├─► `setReport(json.results)`
-       ├─► `setLoading(false)`
-   else:
-       ├─► `setError("API Failed")`
-       └─► `setLoading(false)`
-          │
-[ React Automatically Re-Renders `ResultTable` with new `report` prop ]
-```
+## 2. The Core Public App (`app/page.tsx`)
+The home root provides the massive centralized search interface.
+It connects to a component tree specifically separated for clarity:
+* `<DomainChecker>` (Handles raw input states)
+* `<HealthCards>` (Renders dynamic SVG icons mapping to `Secure` vs `At Risk` statuses)
+* `<VerdictBanner>` (Giant Green/Red status banners highlighting absolute conclusions).
 
 ---
 
-## 4. Admin & Bulk Views
+## 3. The Administration Action Center (`app/admin/page.tsx`)
+This is a heavily protected component strictly for internal enterprise operators.
 
-* **`BulkResultsTable.tsx`**: Unlike the single DomainChecker, the admin panel needs to display data for thousands of domains simultaneously. This component connects to `/api/admin/domains`.
-* **Features:** 
-  * Displays domains in a massive grid.
-  * Implements pagination and client-side filtering (`Filter by: At Risk`).
-  * Includes a specific "Force Rescan All" button which loops an asynchronous queue to re-trigger checks on every domain in the database sequentially without crashing the browser's thread pool.
+### 3.1. Overview UI
+Graphs out basic statistics via a high-end dashboard overlay (Total Domains, At Risk Domains).
+
+### 3.2. Cloudflare Fleet Pagination & Bulk Table
+The core engine of the `Admin` screen. It pulls the entire raw MongoDB `issue_domains` database, rendering hundreds of rows dynamically using Next.js `Suspense` logic to prevent blocking. 
+* **Filter Capabilities:** Dropdowns allow the user to specifically isolate exactly which domains lack `No_SPF_AND_DMARC`, `DKIM_Issues`, or hit `blacklist_issue`.
+* **Outreach Execution:** If a specific domain lacks an owner mapping, the Admin clicks the user's profile icon—triggering a customized pop-out email workflow driven by their Settings.
+
+### 3.3. Automation Monitor
+This section links directly to the `automation_logs` stream in the Firebase Database. If the python-backed Background Bulk Workers encounter an API rate limit, the React code streams the real-time "Levels" (`ERROR`, `WARNING`, `SUCCESS`) directly into the admin terminal UI using the `onSnapshot` SDK.
 
 ---
 
-## 5. UI/UX Polishing Details
+## 4. Settings Page Configuration (`app/settings/page.tsx`)
+Because an enterprise system needs adaptability, the Next.js Setting route provides 4 primary tabs to dictate how the system behaviors universally:
 
-* **Tailwind CSS (`globals.css`)**: All styling is driven by utility classes. This guarantees zero CSS conflicts between components. The project uses heavy conditional rendering, for example: `className={status === 'Pass' ? 'bg-green-100' : 'bg-red-100'}`.
-* **Toast Notifications (`toast.ts`)**: Instead of blocking `alert('Error')` dialogs, the frontend uses a non-blocking toast notification system (e.g. "Domain Scanned Successfully!" sliding in from the bottom right).
-* **Responsive Design:** Every table component inherently collapses into vertical stacks or utilizes `overflow-x-auto` to ensure the complex data grids remain perfectly legible on mobile Safari or Chrome devices.
+1. **General:** Profile display name customization.
+2. **Authentication (Integrations):** Secure token submission. Admins input API variables (e.g., Cloudflare Key). React `fetch` routes POST this configuration strictly over HTTPS where the `lib/encryption.ts` logic securely stores it.
+3. **Access Control:** Super-admins can type new domain emails. The backend validates roles to instantly expand dash access.
+4. **Outreach Defaults:** Admins can type personalized signatures (e.g. `Head of IT, +1 555-0000`) and format specific error strings (e.g., *Your server has a blacklist violation*). The frontend saves these layouts strings to automatically populate their Gmail/Outlook bodies directly via deep-linking protocols.
+
+---
+
+## 5. UI Elements & Libraries
+* **Icons:** `lucide-react` forms all dynamic SVG logos.
+* **Notifications:** `sonner` provides the ultra-smooth, multi-stacking toast alerts appearing in the bottom-right corner when users commit specific DB sync actions.
+* **Style Engineering:** `Tailwind CSS v3.4` forces precise structural bounds, utilizing intensive Glassmorphism (`backdrop-blur-md`) layering.
