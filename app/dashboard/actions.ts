@@ -224,8 +224,8 @@ export async function getFixableDomains(token: string) {
         const collection = db.collection('issue_domains');
 
         // Note: The logic here directly maps to the user's strict requirement:
-        // ONLY allow simple, singular DNS fixes.
-        // DO NOT allow: HTTP issues, Blacklist issues, Multiple Records, or Missing Both.
+        // ONLY allow simple, singular DNS fixes, AND newly added domains missing both.
+        // DO NOT allow: HTTP issues, Blacklist issues, or Multiple Records.
         const filter = {
             ownerUserId: email,
             status: { $ne: 'Secure' },
@@ -233,6 +233,7 @@ export async function getFixableDomains(token: string) {
                 $in: [
                     'No_SPF_Only',
                     'No_DMARC_Only',
+                    'No_SPF_AND_DMARC',
                     'DMARC_Policy_None'
                 ]
             }
