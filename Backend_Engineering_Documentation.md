@@ -1,298 +1,291 @@
-# Domain Health Checker - Backend Engineering Documentation
+# Domain Health Checker - Detailed Backend Engineering Documentation
 
 ---
 
 ## 1. SYSTEM OVERVIEW
 
 **What the system does:**
-The Domain Health Checker backend is a highly specialized diagnostic utility that interrogates a given domain name to determine its routing, web server availability, email security configurations, and IP reputation statuses. 
+The backend is an asynchronous network diagnostic tool. It ingests domain names and executes highly parallelized requests against global DNS resolvers, HTTP web servers, and third-party blocklist databases to extract infrastructure configurations.
 
 **The problem it solves:**
-Domains are the cornerstone of digital business. Misconfigurations in DNS records (A/AAAA, MX), incomplete or incorrect email authentication (SPF, DKIM, DMARC), or domain IP blacklisting can lead to website outages, severe limitations in email deliverability, and vulnerabilities to impersonation attacks. The system automates the traditionally manual and fragmented process of interrogating these various infrastructure components into a unified interface.
+Diagnosing email deliverability (Why did an email bounce?) and website uptime requires disparate, complex CLI tools (`dig`, `nslookup`, `curl`, WHOIS). This system unifies these network layers into a single, automated, structured JSON API.
 
 **Who uses it:**
-* Software Engineering teams executing infrastructure audits.
-* DevOps/SREs verifying environment setups after DNS migrations.
-* Security engineers checking domains against impersonation policies (DMARC/SPF).
-* Marketing or IT operational staff ensuring mass sender capabilities and blocklist safety.
+Engineering teams, DevOps/SREs, and IT administrators managing domain portfolios who need instant infrastructure audits without writing bash scripts.
 
 **Why it exists:**
-To provide a fast, centralized API that acts as a single source of truth for a domain’s foundational networking and security health, abstracting away the complexities of manual `dig`/`nslookup/curl` commands and disparate third-party blocklist searches.
+To abstract the extreme nuance of RFC formatting errors (e.g., duplicate SPF records, broken DMARC policies, missing DNS glue) into programmatic, automated alerts that can be plugged into dashboards or CI/CD pipelines.
 
 **How it fits into infrastructure:**
-It acts as a standalone microservice or serverless API architecture. It receives HTTP connections from front-end applications, CRM tools, or CI/CD pipeline automation scripts, executes highly parallelized outbound networking diagnostic requests, persists historical snapshots into a database backend, and returns structured JSON datasets.
+It operates as a stateless API microservice (Node.js/Express). It receives REST requests, performs outbound network I/O, applies Business Logic classifiers to the raw data, and returns formatted datasets. It is designed to sit behind a Load Balancer (or in Vercel API Routes) with horizontal scaling.
 
 ---
 
 ## 2. HIGH LEVEL ARCHITECTURE
 
-The overall system architecture involves a frontend pushing domain strings to an API node, which orchestrates various downstream workers that handle distinct infrastructure concepts. 
+The entire architecture relies on an "Event Loop" model where one incoming HTTP request spawns dozens of non-blocking outbound network requests, aggregating the findings into a unified payload gracefully.
+
+### Component Interaction Diagram
 
 ```text
-Client (Web App / CI Pipeline)
-         │
-         ▼ HTTP POST / GET (JSON)
-[ API Gateway / Load Balancer ]
-         │
-         ▼
-[ Backend API Service (Node.js/Express/Next.js) ]
-         │
-         ▼
-[ Domain Analysis Engine (Controller) ]
-         │
-         ├─► [ DNS Resolver Unit (A/MX/TXT) ]
-         ├─► [ Email Security Analyzer (SPF/DMARC/DKIM parsing) ]
-         ├─► [ HTTP Availability Checker (Axios/Fetch HTTP/HTTPS) ]
-         └─► [ Blacklist Lookup Service (DNSBL Queries) ]
-         │
-         ▼
-[ Result Aggregator & Issue Classifier ]
-         │
-         ├─► (Write snapshot) ► [ Primary Database (PostgreSQL/MongoDB) ]
-         │
-         ▼ Return JSON payload
-Client (Web App / CI Pipeline)
+       [Client Application (React/Next.js)]
+                       │
+   POST /api/scan {"domain": "example.com"}
+                       │
+             [ Express.js API Gateway ]
+             (Rate Limiting & Validation)
+                       │
+       ┌───────────────┴────────────────────────┐
+       │   Domain Analysis Engine (Controller)  │
+       │   (Spawns Phase 1 & Phase 2 workers)   │
+       └─┬─────────┬─────────┬────────┬─────────┘
+         │         │         │        │
+  [ DNS Resolver ] │         │        │   (Resolves A, MX, TXT)
+  (System/DoH)     │         │        │
+         │         │         │        │
+         ├◄────────┘         │        │   (Injects A/MX into other checks)
+         │                   │        │
+ [ Email Security ]          │        │   (Parses TXT for SPF/DKIM/DMARC)
+ (Syntax Validators)         │        │
+                             │        │
+                     [ HTTP Crawler ] │   (Pings HTTP/HTTPS via Fetch/Axios)
+                     (Redirection/TLS)│
+                                      │
+                             [ Blacklist Node ]
+                             (DNSBL Reversed IP Lookup)
+                                      │
+       ┌──────────────────────────────┴─────────┐
+       │ Result Aggregator & Issue Classifier   │
+       │ (Waits for all Promises to Settle)     │
+       └───────────────┬────────────────────────┘
+                       │
+       [ PostgreSQL / MongoDB Storage ] (Optional Persistence)
+                       │
+             [ HTTP 200 OK (JSON) ]
+                       │
+             [Client Application]
 ```
 
-**Component Explanations:**
-* **API Gateway / Load Balancer:** Receives external requests, terminates SSL, handles basic request routing and rate limiting.
-* **Backend API Service:** Exposes the RESTful endpoints, handles structural payload validation, user authentication (if applicable), and builds the request context.
-* **Domain Analysis Engine:** The core orchestration module. It takes the sterilized domain input and spawns parallel asynchronous promises for all distinct network operations.
-* **Sub-Modules (DNS, Email, HTTP, Blacklist):** Isolated worker functions responsible for exact networking tasks (e.g., executing a DNS query via UDP/TCP, pinging a web server URL, executing reversed IP queries on spam blocklists).
-* **Result Aggregator & Issue Classifier:** Waits for all parallel threads to resolve, map data to a normalized schema, and executes business logic to determine if a specific data point represents a `Passed`, `Warning`, or `Critical` status.
-* **Database:** The persistent storage layer holding historical scans, system logs, and cached analytics.
+**Component Breakdown:**
+* **API Gateway (Express):** Exposes `/api/scan` and routes it to the specific controller.
+* **Domain Analysis Engine:** The core `test-engine.ts`. Orchestrates dependencies (e.g., getting the IP address first before handing it to the Blacklist module).
+* **DNS Resolver:** A custom wrapped module (`dns-cache.ts`) using local UDP sockets and falling back to DNS-over-HTTPS (DoH) endpoints like Google (`8.8.8.8`) to bypass restrictive cloud firewalls.
+* **Email Security Analyzer:** Dedicated logic to structurally analyze Sender Policy Framework (SPF) mechanics and DMARC enforcement tags.
+* **HTTP Crawler:** Evaluates active webserver response codes, timeout thresholds, and valid TLS connections.
+* **Blacklist Node:** Executes dynamic IP reversal and spam-list reputation queries against services like Spamhaus or Barracuda.
 
 ---
 
 ## 3. BACKEND SERVICE ARCHITECTURE
 
-Internally, the backend Node.js codebase is structured using a service-oriented approach to maximize code reuse, testability, and separation of concerns.
+The Node.js codebase strictly separates network transport protocols from the business evaluation logic.
 
-* **API Layer (Controllers/Routes):** The entry point logic (`handlers/api.ts`). Responsible only for receiving the HTTP request, unwrapping parameters, authenticating the caller, and passing the raw domain string to the Domain Processing Engine. It translates domain outputs into standard HTTP status codes and responses.
-* **Request Validation Layer (Middlewares):** Employs strict validation schemas (e.g., Joi, Zod) to ensure inputs are actually fully-qualified domain names (FQDNs), escaping nasty shell characters and truncating protocols (`http://`).
-* **Domain Processing Engine (Service):** Located in `services/domainScanner.ts`. A central asynchronous pipeline acting as a "Director." It manages dependency trees (e.g., DNS A-Records must resolve efficiently before Blacklist lookups can begin on IP targets).
-* **Worker Modules (Providers):** Found in `lib/analyzers/` or `lib/dns/`. These are highly specialized utility scripts utilizing Node `dgram` or `dns/promises` modules to directly interface with internet protocols, disconnected from any HTTP route logic. 
-* **Result Aggregator:** The engine runs `Promise.allSettled()` to catch all Worker Module outputs, mapping them to the expected data transfer object (DTO).
-* **Storage Layer (Repositories):** An abstraction layer executing ORM commands or native DB queries to push the finalized DTO into the tables.
+* **API Layer (`server.ts`):** Only handles HTTP context. Validates the `req.body`, normalizes the domain string, and executes the engine.
+* **Request Validation Layer:** Sanitizes `http://`, `www.`, and trailing slashes so the engine only processes the root Fully Qualified Domain Name (FQDN).
+* **Domain Processing Engine (`test-engine.ts`):** The master orchestrator. Employs `Promise.allSettled()` to fire workers asynchronously without locking the thread.
+* **Worker Modules (`check_mx.ts`, `dnsbl.ts`):** Pure, isolated functions. Given an input (Domain or IP), they perform exact tasks and return a strictly typed `TestResult` object containing `status` and `reason`.
+* **Result Aggregator:** The engine guarantees a return by enforcing strict `setTimeout` races against all promises.
+* **Storage Layer (Future Scope):** Pre-built hooks to map the `FullHealthReport` object to a NoSQL or SQL object mapping for history retention.
 
 **Communication Between Modules:**
-Communication occurs through strongly-typed internal Javascript objects (TypeScript interfaces). The Domain Processing Engine calls worker modules as native asynchronous functions. It injects a timeout controller signal into these functions to force early termination if a module hangs.
+Modules do not call each other. The Processing Engine queries Phase 1 (DNS). When Phase 1 resolves, it passes the data horizontally into Phase 2 (Email, HTTP, Blacklists) via simple JavaScript arrays. 
 
 ---
 
 ## 4. REQUEST LIFECYCLE
 
-The strict lifecycle of an inbound HTTP request consists of 10 sequential phases:
+The life of a single request from start to finish:
 
-1. **User sends domain:** A JSON payload `{"domain": "example.com"}` hits `/api/scan`.
-2. **API receives request:** The backend framework handles the incoming connection, checking JWT tokens or rate limit headers.
-3. **Domain validation:** Zod/Regex validation ensures the input isn't empty, too long, or containing invalid TLD formats. 
-4. **Domain normalization:** The input string `https://www.example.com/login` is aggressively stripped down to the root FQDN: `example.com`.
-5. **DNS resolution:** A foundational check is triggered. Before heavy processing, the system attempts to resolve the root A-Record. If this fails (`NXDOMAIN`), the system can short-circuit non-applicable HTTP checks.
-6. **Parallel checks executed:** Assuming primary resolution, the system uses `Promise.allSettled` to spawn tasks: `checkSPF()`, `checkDMARC()`, `checkDKIM()`, `checkHTTP()`, and `checkBlacklist(ips)`. All run concurrently to minimize latency. 
-7. **Data aggregation:** As promises fulfill or timeout/reject, the framework collects the outputs into a raw system object.
-8. **Issue classification:** The Business Logic layer evaluates the object. e.g. "Does `checkSPF.record` contain `+all`?" If true, a `Warning` label is stamped on that module's result.
-9. **Data stored in database:** A single transaction executes inserting the new `scan_results` row mapped to the unique domain entry.
-10. **Response returned:** The REST schema is finalized and serialized out to the client as an `HTTP 200 OK` JSON document.
+1. **User sends request:** JSON payload `{"domain": "target.com"}` hits `/api/scan`.
+2. **API receives request:** Express receives, checks HTTP headers/auth, and body structure.
+3. **Domain validation:** The system confirms it contains no illegal bash characters and represents a valid TLD format.
+4. **Domain normalization:** `target.com` is extracted bare.
+5. **DNS resolution (Phase 1):** The Engine queries A, MX, TXT, NS, SOA records simultaneously.
+6. **Parallel checks executed (Phase 2):** Using Phase 1 data, the Engine fires off `runSPFTests()`, `runDMARCTests()`, `runHTTPTests()`, and the Blacklists concurrently.
+7. **Data aggregation:** As each function completes, they push `TestResult` objects into categorized arrays (e.g., "DNS", "Email").
+8. **Issue classification:** If a worker function encounters `p=none` in DMARC, it labels the `TestResult.status` as `Error` or `Warning`.
+9. **Data stored in database:** (If implemented) The massive finalized object is written to DB.
+10. **Response returned:** Express fires `res.json()`. Status code `200` is returned containing the payload.
 
 ---
 
 ## 5. CORE PROCESSING ENGINE
 
-The Domain Analysis Engine is built around asynchronous Javascript event-loops rather than threads. 
+This is the most critical operational component of the architecture (`test-engine.ts`).
 
-**Asynchronous Processing & Parallel Checks:**
-Node.js natively provides `dns.promises` allowing the service to send networking requests without blocking the main event thread. The core methodology employs `Promise.allSettled()`. This guarantees that if one module (e.g., testing `HTTPS:443`) experiences packet-drop and stalls, the `checkSPF` and `checkMX` modules will still safely finish their analysis.
-
-**Dependency Management:**
-Some checks are interdependent. 
-* *Blocklist lookups* require IP addresses, which require *DNS A-Record lookups*.
-The engine handles this by dividing operations into two phases: 
-* **Phase 1:** Core Network Checks (DNS A, AAAA, MX, general TXT).
-* **Phase 2:** Advanced Checks (Blocklists utilizing Phase 1 IPs, HTTP using Phase 1 A records, parsed SPF/DMARC structures using Phase 1 TXT records).
-
-**Timeout Handling:**
-Due to unreliable remote nameservers and web hosts, hanging sockets are a major threat. `AbortController` functionality or internal `Promise.race` constructs wrap *every* outbound network call. If a DNS server or website doesn’t respond in `X` milliseconds (e.g., 5000ms), an explicit `TimeoutError` is thrown, caught by `allSettled()`, and categorized safely. 
-
-**Result Aggregation:**
-Outputs from varied modules (which may spit out arrays of IPs, strings of parsed policies, or Error stack traces) are transformed by mappers into a ubiquitous status footprint structure:
-`{ module: string, status: Enum, details: object, messages: [string] }`
+* **Asynchronous Processing:** No `await` blocks other lines from running unless strictly dependent. 
+* **Parallel Checks:** `Promise.all([Task1, Task2, Task3])` is used to execute 15+ network requests simultaneously over the Node.js Non-Blocking I/O thread. A scan taking 2 seconds is bound by the *slowest* individual response, not the *sum* of all responses.
+* **Dependency Management:** DNS Blacklisting requires an IP. Therefore, `dns.resolve4()` must complete before `checkBlacklist(ip)` can be pushed to the active Promise array.
+* **Timeout Handling:** A rogue web server might hold a socket open for 60 seconds (Slowloris). We wrap *all* module calls in `withTimeout(promise, 5000ms)`. If it exceeds 5000ms, the wrapper rejects the promise locally and returns a handled payload: `"Status: Timeout"` without hanging the API.
+* **Result Aggregation:** Categorical reduction. `DNS Results -> []`, `HTTP Results -> []`, ensuring the client JSON remains perfectly typed according to the `FullHealthReport` interface.
 
 ---
 
 ## 6. DATABASE DESIGN
 
+*(Note: While the provided source mainly acts as a stateless API hook, this is the architectural mandate for production scaling)*
+
 **Why a database is used:**
-A relational or NoSQL database is required to establish historically accurate temporal views (tracking when a domain *became* blacklisted or how often an HTTP server goes down). 
+To track changes over time (e.g., "When did we accidentally break our SPF record?") and to allow bulk scanning of thousands of domains offline (saving the results for later viewing). 
 
-**What Data is Stored:**
-The database tracks top-level generic entities (the domain string itself), distinct scans (unique timestamps of evaluation), and optionally broken-out records for complicated sub-configurations.
+**Schema Design (PostgreSQL/Relational):**
 
-**Example Relational Schema (PostgreSQL design style):**
-
-**`domains` table**
+**`domains` table** (The core entities)
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `id` | UUID (PK) | Unique identifier for the domain entry. |
-| `domain_name` | VARCHAR | The actual root FQDN string (e.g., `google.com`). Unique index applied. |
-| `created_at` | TIMESTAMP | The first time the system ever processed this domain. |
-| `last_scanned_at` | TIMESTAMP | Update hook tracking the most recent scan time. |
+| `id` | UUID (PK) | Unique domain identifier. |
+| `domain_name` | VARCHAR | The root string (e.g. `github.com`). Unique. |
+| `created_at` | TIMESTAMP | Injection time. |
+| `last_scanned_at` | TIMESTAMP | Useful for cron update routines. |
 
-**`scan_results` table**
+**`scan_results` table** (The historical snapshops)
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `id` | UUID (PK) | Unique ID for the specific diagnostic scan run. |
-| `domain_id` | UUID (FK) | References `domains.id`. Establishing a 1-to-Many relationship. |
-| `scan_timestamp` | TIMESTAMP | The exact time this batch of queries was executed. |
-| `overall_status` | VARCHAR | Denormalized summary status: `Clean`, `Warning`, or `Critical`. |
-| `scan_duration_ms`| INTEGER | Total execution time useful for monitoring system performance. |
-| `dns_raw_data` | JSONB | A JSON blob of A, MX, CNAME records. |
-| `security_raw_data`| JSONB | Object maintaining parsed SPF, DMARC, DKIM policies. |
-| `http_availability`| JSONB | Array of port responses and timings. |
-| `blacklist_hits` | INTEGER | Number of databases this domain triggered positive against. |
+| `id` | UUID (PK) | The specific scan event ID. |
+| `domain_id` | UUID (FK) | Reference back to `domains`. |
+| `scan_timestamp` | TIMESTAMP | Exact time of the network query. |
+| `overall_status` | ENUM | Computed status: `Passed`, `Warning`, `Critical`. |
+| `scan_duration_ms`| INTEGER | Performance latency metric. |
+| `dns_raw_data` | JSONB | A dense blob of all A, MX, CNAME, TXT outputs. |
+| `security_raw_data`| JSONB | Blob of extracted SPF string, DMARC p= tag, DKIM keys. |
+| `http_availability`| JSONB | Server response headers and latency (ms). |
+| `blacklist_score` | INTEGER | Sum of the active blacklist hits (0 = Clean). |
 
-**Relationships:**
-`domains` holds a `1:N` relationship with `scan_results`. Querying `domains` JOIN `scan_results` ORDER BY `scan_timestamp DESC LIMIT 10` establishes a historical health timeline for a given domain structure. 
-
-*(If using MongoDB, the `domains` collection typically embeds the most recent scan result to limit query complexity, while a historical timeseries collection maintains older scan payloads).*
+**Relationships:** `domains` (1) : (N) `scan_results`. Querying `scan_results` Ordered By Time DESC gives the "Health Timeline" of a specific piece of infrastructure.
 
 ---
 
 ## 7. DATA FLOW
 
-Data traces through the system layers sequentially and irreversibly per request:
+Data moves in one direction through the entire system:
 
-1. **Client Request:** Frontend payload `POST /api/healthcheck {"target": "example.com"}` received by Node process.
-2. **Backend API:** Body parsing middleware translates JSON stream to JavaScript Object. Zod validates schema.
-3. **Processing Engine:** Rejects payload if validation fails. Otherwise, passes pure string `example.com` to internal scanner service.
-4. **External DNS Queries:** Process initiates UDP/TCP calls to local resolvers (or `8.8.8.8`). Requests leave backend environment boundary.
-5. **Analysis Modules:** Responses arrive. Domain string and raw DNS/IP data injected into specific parsers.
-6. **Aggregation:** Modules return formatted JSON interfaces representing their specific sector of concern. Aggregator unifies into comprehensive `Report` object.
-7. **Database Storage:** The `Report` object is mapped to DB models and inserted via the database connection pool (e.g., `INSERT INTO scan_results...`).
-8. **API response:** Express/Next sends an HTTP `200` with the serialized representation of the final `Report` object over the open socket connection back to the client application.
+1. **Client Request:** `{"domain": "stripe.com"}` received by Node process.
+2. **Backend API:** Body parsing middleware translates JSON stream to JavaScript Object. Express router validates payload schema.
+3. **Processing Engine:** Rejects payload if invalid. Otherwise, initiates the testing sequence.
+4. **External DNS queries:** UDP sockets open to OS default nameservers asking for target records.
+5. **Analysis modules:** Module functions like `runSPFTests()` are fed the returned TXT records. They use complex Regex and string manipulation to evaluate the configuration.
+6. **Aggregation:** Modules return formatted JSON interfaces. The engine reduces these into an array of Categories (DNS, Blocklists, Server Routing).
+7. **Database storage:** Object mapping translates the JSON categories efficiently into Postgres `JSONB` rows linked to the user's account ID.
+8. **API response:** Express forces HTTP 200, serializing the final object back to the client application socket.
 
 ---
 
 ## 8. DOMAIN ANALYSIS MODULES
 
-The atomic worker modules are defined by their specialization. Each operates essentially as a pure function where feasible. 
+These specialized workers perform the actual interrogations.
 
 ### DNS Resolution
-* **Purpose:** Establish the fundamental structural routing values of the domain.
-* **Algorithm:** Node native `dns.promises.resolve*` functions querying root and authoritative DNS servers.
-* **Input:** String `domain`.
-* **Output:** JSON mapping `A`, `AAAA`, `MX` (with priorities), and unparsed `TXT` data clusters.
-* **Edge Cases:** CNAME chaining logic (domain points to CNAME, which points to A); DNS `SERVFAIL`, unexpected UDP packet truncation.
+* **Purpose:** Determine foundational routing (IP addresses and Mail hubs).
+* **Algorithm:** Node native `dns.promises`. Has a built-in fallback to `fetch` DNS-over-HTTPS (DoH) via Google/Cloudflare endpoints if UDP Port 53 is blocked by the host platform (like Vercel and AWS Lambda).
+* **Input:** `target.com`
+* **Output:** Arrays of IPs, MX Exchanges, and nested TXT arrays.
+* **Edge Cases:** Resolvers randomly dropping packets under load returning blank `[]` arrays instead of `ENOTFOUND` errors. Handled by aggressive retrying logic in `dns-cache.ts`.
 
 ### SPF Analysis
-* **Purpose:** Ensure the domain restricts outbound mail IP authorization correctly via Sender Policy Framework.
-* **Algorithm:** Iterates TXT records, finds string starting `v=spf1`. Parses space-delimited mechanisms.
-* **Input:** Raw TXT arrays.
-* **Output:** Formatted SPF statement, matched mechanisms, and strictness rating (`Pass`, `SoftFail`, `HardFail`).
-* **Edge Cases:** Multiple SPF records (which is technically invalid RFC standard), over-authorization limits (too many DNS lookups allowed in `include:` arguments).
+* **Purpose:** Validate IP authorizations to combat email spoofing.
+* **Algorithm:** Regex matching `v=spf1`. **Crucially, executes a Recursive Lookup algorithm**: If it sees `include:_google.com`, it triggers a *new* nested DNS query to find what's behind the include, tallying the total lookups to ensure the domain does not exceed the absolute RFC max of 10 lookups.
+* **Output:** Count of nested lookups, policy string, trailing strictness check (`+all` vs `-all`).
+* **Edge Cases:** Redundant includes or SPF records broken into dozens of tiny TXT strings (which must be concatenated locally before parsing).
 
 ### DKIM Detection
-* **Purpose:** Ascertain DomainKeys Identified Mail usage.
-* **Algorithm:** Requires specific knowledge of a selector to find explicit keys (e.g. `google._domainkey.example.com`). Often operates heuristically trying known common selectors.
-* **Input:** String `domain` and potentially a known `selector` array.
-* **Output:** Extracted public RSA/Ed25519 key policy strings.
-* **Edge Cases:** Unknown custom selectors make DKIM verification functionally hard to brute-force accurately.
+* **Purpose:** Find active cryptographic keys.
+* **Algorithm:** Iterates over the 6 most common selectors on the internet (e.g. `google._domainkey`, `default._domainkey`). 
+* **Output:** Extracts base64 keys starting with `p=`.
+* **Edge Cases:** We cannot guess custom/randomized selectors generated by boutique email hosts. 
 
 ### DMARC Validation
-* **Purpose:** Authenticate the final layer of SPF/DKIM enforcement and domain alignment policies.
-* **Algorithm:** DNS lookup specifically for TXT records at `_dmarc.targetdomain.com`. Regex applied to parse `v=DMARC1; p=...` parameters.
-* **Input:** String `domain`.
-* **Output:** Separated values for `policy (p)`, `subdomain policy (sp)`, `reporting points (rua/ruf)`.
-* **Edge Cases:** Valid DMARC is present, but policy is set to `p=none` (Monitoring mode, which is technically insecure).
+* **Purpose:** Validate policy enforcement.
+* **Algorithm:** Subdomain query specifically to `_dmarc.target.com`. Maps the resulting string `v=DMARC1; p=...` to a K/V object.
+* **Output:** Strictness of `p=` tag (none/quarantine/reject) and checks external Authorization matching of `rua=` report emails.
+* **Edge Cases:** DMARC inheritance. If `sub.domain.com` lacks a record, the algorithm automatically rolls up and searches the parent `domain.com` to see if root policies cover the subdomain.
 
 ### HTTP Availability Check
-* **Purpose:** Validate web server up/down status.
-* **Algorithm:** `Axios.head()` or `Axios.get()` against `http://example.com` and `https://example.com`.
-* **Input:** String `domain`.
-* **Output:** Boolean `up`, HTTP status code, response time in MS, redirection destination.
-* **Edge Cases:** Dealing with 301/302 redirect loops, self-signed SSL certificates rejecting the Node TLS validation, web application firewalls (Cloudflare) sending 403 Forbidden on programmatic tools blocking automated scrapers. 
+* **Purpose:** Ensure Web Server uptime.
+* **Algorithm:** Executes `fetch` against `http://` and `https://`. Checks status codes, measures response latency, and validates Redirect paths.
+* **Output:** Booleans for `up`, latency `ms`, and `location` headers.
+* **Edge Cases:** Servers rejecting non-browser User-Agents. Systems returning 403 Forbidden due to Web Application Firewalls (Cloudflare) blocking automated bot scrapers.
 
 ### Blacklist Detection
-* **Purpose:** Verify IPs are safe from global spam reputation databases (DNSBL).
-* **Algorithm:** Extract IPv4 string (e.g., `192.168.1.1`), reverse it (`1.1.168.192`), append to target blacklist (e.g. `zen.spamhaus.org`), execute A-record DNS query. Positive resolution (usually yielding a `127.0.0.X` code) signifies listing.
-* **Input:** IPv4 Addresses.
-* **Output:** Array of DBs where listed vs checked.
-* **Edge Cases:** IPv6 query structure is distinct and can break naive IP reversers. Provider throttling queries and sending warning codes back as A responses (false positives).
+* **Purpose:** Evaluate SPAM reputation.
+* **Algorithm:** IP reversal (DNSBL protocol). Takes `192.168.1.1` and queries `1.1.168.192.zen.spamhaus.org`. 
+* **Output:** Maps successful returning IPs (like `127.0.0.4`) to threat severity levels. 
+* **Edge Cases:** Providers heavily rate-limit queries and artificially return "Blocked" responses if the AWS engine queries too fast. Backend detects these specific throttle codes and handles them silently via fallback queues.
 
 ---
 
 ## 9. BUSINESS LOGIC
 
-The ultimate value of the API lies in translating technical data points into human-actionable alerts. Issue classification applies defined rules to module outputs. Each issue carries a severity flag, and the domain receives the overall highest encountered severity.
+The API uses clear deterministic heuristics to categorize the issues it finds into three distinct severity tags.
 
-**Classification Tiers:**
-* **Passed:** Configuration is fully compliant with modern operational and security standards. 
-* **Warning:** Configuration functions, but is non-optimal, mildly insecure, or technically violates strict RFCS without catastrophic impact. 
-* **Critical:** Fundamental failure ensuring downtime, or actively dangerous security postures exposing organizations to immediate threats.
+* **Passed:** Configuration is fully compliant with modern RFCS and security postures. 
+* **Warning:** Configuration functions, but is non-optimal, mildly insecure, or technically violates strict RFCS but works in practice. 
+* **Critical (Error):** Fundamental architectural failure ensuring downtime, or actively dangerous security postures exposing organizations to immediate attacks.
 
-**Example Decision Rules:**
-* **DNS module returns `NXDOMAIN`** → *Critical* (The domain literally does not resolve internet traffic).
-* **DMARC record missing entirely** → *Critical* (High risk of domain spoofing and phishing).
-* **DMARC present, but `p=none`** → *Warning* (Domain intends to implement security, but currently takes no enforcement against failures).
-* **SPF record includes `+all`** → *Critical* (Any IP on the internet is authorized to send email on behalf of this domain).
-* **SPF record uses `~all` (SoftFail) instead of `-all` (HardFail)** → *Warning* (Debatable RFC preference, but non-critical).
-* **Blacklist check resolves positively on Spamhaus** → *Critical* (Outbound email campaigns will fail drastically).
-* **HTTP `403 Forbidden` response** → *Warning* (Server is active and online, but restricts data—often due to WAFs detecting bots).
+**Decision Engine Logic Matrix (Examples):**
+* `A Record (IP)` is Private (e.g. `10.0.0.1`) → **Critical** (Unroutable).
+* `DMARC record` is completely missing → **Critical** (Total spoofing vulnerability).
+* `DMARC policy` is `p=none` → **Warning** (Monitoring exists, but actively refuses to enforce security).
+* `SPF Terminator` is `+all` → **Critical** (Literally authorizes the entire globe to send email as this domain).
+* `SPF Terminator` is `~all` (Softfail) → **Passed / Warning** (Widely accepted, but slightly less secure than `-all`).
+* `DNS Blacklist` returns true on Spamhaus → **Critical** (Emails will bounce globally).
+* `HTTP Response` is `403 Forbidden` → **Warning** (Server is actually online and processing, but rejecting the query based on User-Agent).
 
 ---
 
 ## 10. ERROR HANDLING STRATEGY
 
-Graceful degradation is a paramount directive. A failure in one quadrant must not fail the system globally. 
+Unreliable remote networks must never crash the executing Node environment. Graceful degradation is strictly implemented.
 
-* **DNS lookup failure (Temporary/Timeout):** Caught inside the worker module loop. Logged and output natively as `Failed to Resolve`. Status does not throw an API 500 error; it gracefully populates the JSON with `DNS Status: Critical Issue`.
-* **Network timeout (HTTP checking):** Node networking limits applied strictly (e.g., 5000ms). The `AxiosError ECONNABORTED` is swallowed, and mapped to a clean user-space message: `"HTTP endpoint unreachable or timed out."`
-* **Invalid domain (Regex failure):** Caught immediately in API Request Validation. Throws `HTTP 400 Bad Request` prior to any computing resources being instantiated. 
-* **External API/DNS server unreachable:** Failsafes and fallback DNS providers (if possible). Internal modules return standard "Service Unavailable" JSON sub-blocks. 
-* **Blacklist service unavailable:** DNSBL queries heavily prone to rate-limiting by Spamhaus/Barracuda. If query logic returns generic `127.255.255.255` (throttle IP code), backend accurately identifies this as **Not Blacklisted**, logs the throttle internally into monitoring, and issues a standard response array bypassing the service gracefully.
+* **DNS lookup failure (Domain Missing):** Node's `ENOTFOUND` is caught inside the worker loop. Status is gracefully mapped to `Status: Error | Category: Missing DNS`. The promise does not reject; it resolves with a classified failure object.
+* **Network timeout (Hanging Server):** The global 10-second `withTimeout` wrapper forces a resolution of `Status: Error | Reason: Network Endpoint Unreachable` rather than hanging the user's dashboard endlessly.
+* **Invalid domain (Regex failure):** Handled before the engine starts with a synchronous HTTP `400 Bad Request`.
+* **External API/Provider Failure:** DNS-over-HTTPS fallback allows for `fetch` retries across 3 different providers (Google/Cloudflare/Quad9) if one starts limiting request quantities (HTTP 429).
+* **Blacklist service unavailable:** DNSBL queries heavily throttle. If query logic returns generic `127.255.255.255` (throttle IP code), backend accurately identifies this not as a spammer, but as an Engine API block. It resolves cleanly as "Throttle Warning" bypassing the database hit.
 
 ---
 
 ## 11. SECURITY MODEL
 
-As a tool generating outbound network requests based heavily on untrusted user parameters, defense-in-depth is employed systematically.
+As a system built to ping untrusted, externally-provided hostnames, it acts natively as a proxy.
 
 * **Input Validation:** Strict parsing. Only characters `[a-z0-9.-]` are authorized. Input sizes hard-capped at 253 characters (RFC standard limit).
-* **Request Sanitization:** Excludes control characters, spaces, and `\n` to prevent Command Injection or DNS Poisoning attacks via Node binaries. 
-* **SSRF (Server-Side Request Forgery) Prevention:** Since the tool pings the URL defined by the user (HTTP Availability module), it represents an SSRF surface. The system prevents checking local interfaces (e.g. `localhost`, `127.0.0.1`, `10.0.0.0/8`, `169.254.169.254` AWS Metadata URLs). Node DNS resolution forces checking external IP ranges before finalizing internal `HTTP` execution. 
-* **Rate Limiting:** The API is shielded by sliding-window token buckets per IP/User to prevent malicious actors from utilizing the architecture as an automated massive spam-checker DDoS tool against third parties.
+* **SSRF (Server-Side Request Forgery) Prevention:** Because the tool connects via `fetch` to a provided URL, a malicious actor could input an internal AWS metadata IP (`http://169.254.169.254`). A global guard function explicitly evaluates target IPs before execution to block `Private (RFC1918) IP Lookups` dead in their tracks.
+* **Rate Limiting:** Sliding-window token buckets per IP/User to prevent malicious actors from utilizing the architecture as a DDoS proxy against third parties.
 * **Timeout Protection:** Hard delays on Promises. Prevents Slowloris-style thread hanging where malicious payload servers deliberately trickle packets back to exhaust Node.js runtime memory.
+* **Request Sanitization:** Excludes command line control characters mapping directly to internal OS processes.
 
 ---
 
 ## 12. PERFORMANCE DESIGN
 
-Node.js provides excellent internal I/O capability for networking, provided the event loop is never synchronously blocked.
+Node.js provides magnificent internal networking concurrency patterns out of the box.
 
-* **Asynchronous Processing:** No `fs.readFileSync` or blocking logic exists. All DB saving and network pinging use fully non-blocking architectures.
-* **Parallel Core Execution:** By enforcing `Promise.all()` structures, a scan examining DNS, 5 blacklists, and HTTP headers requires computing time matching only the slowest single external response limit (usually HTTP Timeout bounding at 5 seconds), rather than summing 10 queries together serially (which could take 20s+).
-* **Connection Pooling:** Postgres/MongoDB connections utilize pools (e.g., pg-pool/Mongoose bounds) rather than opening/closing per request. 
-* **Deduplication caches:** (If architecturally enabled) Redis caches blocklist outputs for repetitive similar scans or shared IP addresses in multi-scan arrays preventing duplicate queries and aggressive DNSBL rate-limiting.
+* **Parallel DNS Socketing:** By enforcing heavily grouped `Promise.all([cname, mx, a, itxt])` structures, the engine hits the OS networking stack simultaneously.
+* **DNS Resolver Deduplication (`dns-cache.ts`):** Identical DNS lookups requesting the same TXT record from multiple sub-modules pull from a localized Map cache valid for 10 seconds. This prevents duplicating external I/O on identical overlapping lookups during a fast scan constraint. 
+* **Queue Backpressure Controls:** A concurrency governor limits active DNS requests to `MAX_CONCURRENT_QUERIES = 250`. If the system scans 50 domains at once, request #251 waits in a queue until a slot frees up. This prevents complete socket starvation and random `EAI_AGAIN` drops from the local OS network driver.
 
 ---
 
 ## 13. SCALING STRATEGY
 
-As traffic increases heavily from single domains to bulk-upload queues:
+For transforming this API from simple one-off checks to scanning ten thousand domains every hour:
 
-* **Horizontal Scaling:** API layer is fundamentally stateless (besides database persistence). It exists neatly in Docker containers that can horizontally scale via Kubernetes pods based on CPU/RAM autoscaling logic behind a standard ingress load balancer.
-* **Queue Processing (Off-Main-Thread):** Upgrading bulk processing queues to utilize `Redis` + `BullMQ` or `AWS SQS`. Instead of holding the API connection open dynamically waiting for a 5 second scan, API returns a `202 ACCEPTED / Scan_ID`, placing the job on the queue. Worker microservices process jobs out of the queue and write to the DB. Frontend subsequently polls or receives Webhooks upon DB write completion.
-* **Distributed Scanning Services:** Offloading DNS checks to separate geographical node runners to guarantee highly-accurate geo-routing analysis without overloading centralized API CPU limits.
+* **Horizontal Scaling:** API layer is fundamentally stateless. It exists neatly in Docker containers that can horizontally scale via Kubernetes pods based on CPU/RAM autoscaling logic behind Nginx Load Balancers.
+* **Decoupled Queue Processing:** By implementing `Redis` + `BullMQ`. Instead of holding the API connection open dynamically waiting for a massive scan batch, the API returns a `202 ACCEPTED` Job ID. Worker Node pods process jobs asynchronously out of memory queues and write directly to the Postgres cluster in bulk transactions.
+* **Distributed Geo-Scanning Services:** Offloading heavy HTTP/Port checking to remote serverless runners (e.g., AWS Lambdas running in Europe/Asia) to guarantee geo-routing analysis independently from the central engine.
 
 ---
 
 ## 14. RISK ANALYSIS
 
-Maintaining infrastructure checking architectures involves significant third-party unreliability risks.
+Maintaining infrastructure checking architectures involves dependencies on third parties that can unexpectedly fail.
 
-* **Risk - DNS poisoning/Spoofing against the runner:** Backend relying on poisoned ISP nameservers may incorrectly validate policies. **Mitigation:** Hardcode internal `dns` library requests against trusted public resolvers globally (1.1.1.1 or 8.8.8.8 over DoH where applicable).
-* **Risk - External dependency unreliability:** DNS Blacklist maintainers regularly block high-volume AWS/GCP IPs from query access unless utilizing paid tiers. **Mitigation:** Graceful API design ensures failing to reach a Blacklist results in an empty list locally, explicitly flagged as a scanner timeout rather than returning a false clean or throwing a system error.
-* **Risk - API abuse/Large scale scanning load:** Creating millions of concurrent timeouts crashes processes via RAM explosions. **Mitigation:** Nginx/Gateway rate limiters, plus queue decoupling for any bulk uploads. Strict `max-connections` configurations on upstream socket implementations (`http.Agent`/`https.Agent`).
+* **Risk: DNS Spoofing against the runner:** Backend relying on poisoned VPC nameservers may incorrectly ingest bad configurations. 
+  * **Mitigation:** Built-in `fetch`-based HTTP DoH paths strictly validating responses from Google over TLS, ensuring absolute veracity of the record outputs.
+* **Risk: Blacklist Service Bans:** High-volume traffic to Spamhaus triggers IP bans on the runner.
+  * **Mitigation:** Backend grace logic detects standard ban IP responses and skips the check, returning a clear system Warning of "API Quota Exceeded" without producing a false positive "You are Blacklisted" alarm to the user.
+* **Risk: Large Scale Memory Exhaustion:**
+  * **Mitigation:** Implementing the `250 Query Buffer Queue` means no matter how many queries arrive, the engine processes them systematically and sustainably without exploding V8 heap memory.
 
 ---
 
@@ -300,29 +293,28 @@ Maintaining infrastructure checking architectures involves significant third-par
 
 Backend teams require absolute visibility into failures inside stateless environments.
 
-* **Request Logs:** Nginx/API logs track inbound connections, parsing latency metrics (`morgan`/`pino`).
-* **Scan Logs:** Business-specific metrics. Tracking `domain_name`, `user_id`, and `duration_ms` inside Elasticsearch or Datadog enables dashboarding of average resolution time, classifying whether global API slowdowns mirror target slowness or internal bottlenecking.
-* **Error Logs:** Utilizing structured logging outputs (Sentry.io). Any caught exception not manually thrown by domain validation creates full stack traces linked to request-IDs ensuring backtracing of catastrophic memory leaks or network stack failures. 
-* **Metrics Collection:** Prometheus targets exposing `Number of Scans Triggered`, `DNS Queries Yielding Timeout`, `Database Write Latencies`.
+* **Console Logging:** Standardized output prefixing `[SCANNER]` and `[DNS]` clearly detailing lifecycle transitions (e.g. `Starting health check for target...`, `Falling back to OS system resolver...`). 
+* **Request Latency Analytics:** Writing the overall `duration_ms` of every scan to logging clusters (Datadog/Elastic). Enables dashboarding of average resolution time, classifying whether global API slowdowns mirror target internet slowness or internal Node bottlenecking.
+* **Detailed Error Boundaries:** The generic Express API catch block returns simple `500 Server Errors`, but internally passes the exact node stack traces `console.error` for pipeline collection (Sentry.io). 
 
 ---
 
 ## 16. DEPLOYMENT ARCHITECTURE
 
-The deployment model assumes standard SaaS-based operational practices.
+The deployment model assumes modern Vercel or Containerized environments.
 
-* **API Hosting/Runtime:** Containerized Node.js (v18+) Alpine images optimized for minimal footprints. Managed and orchestrated by AWS ECS or Kubernetes clusters (alternatively deployed globally optimized via serverless infrastructures like Vercel API routes or AWS Lambdas depending on traffic concurrency patterns).
-* **Database:** Managed Cloud relational DB instance (e.g. Amazon RDS PostgresSQL / MongoDB Atlas) securely residing inside a private VPC. Backend workers securely communicate over the private local subnets.
+* **API Runtime:** TypeScript compiled to standard Javascript. Extremely minimal. Fully compatible with Node v18+ execution boundaries.
+* **Vercel/Serverless Fallbacks:** Many PaaS platforms block native UDP traffic (the standard method for DNS resolution). The codebase is specifically built to detect Vercel environment flags, forcing all DNS logic to route through authorized HTTP proxies to ensure consistent functionality anywhere.
 * **Environment Variables:** All application secrets (DB credentials, proprietary Blacklist API tokens, SSL params) injected strictly through `.env` variable files locally or Vault/K8s Secrets natively. 
-* **Production Setup:** Enforces mandatory TLS encrypted connections inbound, logging pipelines outbound into remote SIEMs, and rigid environment separation (Dev/Staging/Production).
+* **Production Setup:** Enforces mandatory TLS encrypted connections inbound. 
 
 ---
 
 ## 17. LIMITATIONS
 
-* **TCP Port Blocking:** Scanners operating inside tightly controlled Data Center rulesets (VPCs/Docker) may occasionally struggle to complete random HTTP pings if firewall outbound rules only prioritize internal data routing instead of external generic web port access.
-* **Rate Limits from Targets:** Large scale scanning of domains sitting behind singular proxies (like Cloudflare networks) heavily trips their automated defense mechanisms causing mass False `Warning` readings of unreachability, not easily solvable without distributed IPs. 
-* **True CNAME resolution complexity:** Deeply nested, cross-organizational CNAME records require sophisticated recursive crawling which can artificially bloat execution times beyond acceptable SLA limitations if unbounded.
+* **DKIM Selector Bruteforcing:** Because DKIM is stored on specific subdirectories (selectors) chosen arbitrarily by the admin, the system must guess the selector. If an administrator uses `customkey44._domainkey.target.com`, the 6-key standard brute-force will not find it, yielding an incomplete report indicating "Not Found".
+* **Internal Network Scanning:** The cloud engine cannot check the health of localized development intranet domains (e.g., `dev.local.network`) hidden behind corporate firewalls unless explicitly VPN'd into the topology.
+* **True CNAME resolution complexity:** Deeply nested, cross-organizational CNAME records or looping aliases can artificially bloat recursive execution times if unbounded by the retry limits.
 
 ---
 
@@ -330,7 +322,6 @@ The deployment model assumes standard SaaS-based operational practices.
 
 Backend logic constantly requires maintenance to support adapting internet standards. Expected expansions include:
 
-* **SSL Certificate Validation Pipeline:** Utilizing HTTP connections to parse out TLS handshake metrics, extracting the certificate issuer string, SAN list, and specifically checking against the UTC time required for automated Expiry Alerting queues.
-* **WHOIS Integration Service:** Bridging the gap natively between technical infrastructure and managerial operations. Extracting registrar expiration dates via custom implementations of `tcp:43` socket protocols to WHOIS servers.
-* **Subdomain Bruteforcing/Scanning:** Employing dictionary-based enumeration scripts to find and analyze generic unlinked systems (e.g., `dev.example.com`, `mail.example.com`).
-* **Automated Continuous Monitoring:** Leveraging the DB storage and queues to write internal Cron jobs (EventBridge). A nightly sweep picking up all previously scanned databases and actively checking for newly dropped SPF policies or fresh blacklist applications, notifying users asynchronously. 
+* **SSL Date Parser Engine:** Directly connecting a `tls.connect` socket to Port 443 specifically to rip the certificate bytechain natively, exposing the raw `valid_from` and `valid_to` UTC timestamps for alerting "Certificate Expires in 14 days!"
+* **WHOIS Integration Service:** Bridging the gap natively between technical infrastructure and managerial operations. Extracting registrar expiration dates via custom implementations of `tcp:43` socket protocols to global WHOIS servers.
+* **Automated Continuous Monitoring (Cron):** Leveraging the storage schema and queues to write internal Cron jobs (AWS EventBridge). A 3:00 AM nightly sweep picking up all registered domains, executing a silent scan, diff-checking against yesterday's JSON blob, and firing Email Webhooks if a metric degraded (e.g., "Your Web Server just threw a 500 error!"). 
