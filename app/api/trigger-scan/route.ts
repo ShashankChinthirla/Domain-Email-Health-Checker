@@ -70,7 +70,9 @@ export async function POST(request: Request) {
             },
             body: JSON.stringify({
                 ref: 'main', // Branch to run the workflow on
-                inputs: {}  // Not strictly required for workflow_dispatch without inputs, but good practice
+                inputs: {
+                    scan_all: scanAll ? 'true' : 'false'
+                }
             })
         });
 

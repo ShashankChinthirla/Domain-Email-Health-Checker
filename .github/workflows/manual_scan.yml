@@ -2,6 +2,12 @@ name: Fast Manual Domain Scan
 
 on:
   workflow_dispatch:
+    inputs:
+      scan_all:
+        description: 'Scan all domains (true/false)'
+        required: false
+        default: 'false'
+        type: string
 
 jobs:
   fast-scan:
@@ -29,4 +35,8 @@ jobs:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
         run: |
           echo "🔍 Booting Distributed Node Shard ${{ matrix.shard_index }}..."
-          npx tsx scripts/rescan_db_v3.ts --new --shard ${{ matrix.shard_index }}/10
+          if [ "${{ github.event.inputs.scan_all }}" == "true" ]; then
+            npx tsx scripts/rescan_db_v3.ts --all --shard ${{ matrix.shard_index }}/10
+          else
+            npx tsx scripts/rescan_db_v3.ts --new --shard ${{ matrix.shard_index }}/10
+          fi
