@@ -5,10 +5,10 @@ import { isAdmin } from '@/lib/roles';
 
 export async function POST(request: Request) {
     try {
-        // 1. Verify Identity and Admin Status Server-Side
+        let userEmail: string;
         try {
             const auth = await verifyAuth(request);
-            const userEmail = auth.email;
+            userEmail = auth.email;
 
             // Strict Admin check for triggering scans
             const adminStatus = await isAdmin(userEmail);
@@ -26,10 +26,10 @@ export async function POST(request: Request) {
         // IF RUNNING LOCALLY, ALWAYS FALLBACK TO TERMINAL SO USER CAN WATCH IT LIVE
         if (process.env.NODE_ENV === 'development') {
             const flag = scanAll ? '--all' : '--new';
-            console.log(`\n🚀 [LOCAL OVERRIDE] Triggering High-Speed Scanner (${flag}) in local terminal...`);
+            console.log(`\n🚀 [LOCAL OVERRIDE] Triggering High-Speed Scanner (${flag}) for ${userEmail} in local terminal...`);
             console.log("------------------------------------------------------------------");
 
-            const child = spawn('npx', ['tsx', 'scripts/rescan_db_v3.ts', flag], {
+            const child = spawn('npx', ['tsx', 'scripts/rescan_db_v3.ts', flag, '--user', userEmail], {
                 shell: true,
                 detached: true,
                 stdio: 'inherit' // This pumps the live logs directly to the VS Code terminal
@@ -71,7 +71,8 @@ export async function POST(request: Request) {
             body: JSON.stringify({
                 ref: 'main', // Branch to run the workflow on
                 inputs: {
-                    scan_all: scanAll ? 'true' : 'false'
+                    scan_all: scanAll ? 'true' : 'false',
+                    user_email: userEmail
                 }
             })
         });

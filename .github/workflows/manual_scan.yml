@@ -8,6 +8,11 @@ on:
         required: false
         default: 'false'
         type: string
+      user_email:
+        description: 'User email to scope scan'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   fast-scan:
@@ -35,8 +40,14 @@ jobs:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
         run: |
           echo "🔍 Booting Distributed Node Shard ${{ matrix.shard_index }}..."
+          
+          USER_FLAG=""
+          if [ -n "${{ github.event.inputs.user_email }}" ]; then
+            USER_FLAG="--user ${{ github.event.inputs.user_email }}"
+          fi
+
           if [ "${{ github.event.inputs.scan_all }}" == "true" ]; then
-            npx tsx scripts/rescan_db_v3.ts --all --shard ${{ matrix.shard_index }}/10
+            npx tsx scripts/rescan_db_v3.ts --all $USER_FLAG --shard ${{ matrix.shard_index }}/10
           else
-            npx tsx scripts/rescan_db_v3.ts --new --shard ${{ matrix.shard_index }}/10
+            npx tsx scripts/rescan_db_v3.ts --new $USER_FLAG --shard ${{ matrix.shard_index }}/10
           fi
