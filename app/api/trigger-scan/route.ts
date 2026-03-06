@@ -20,12 +20,16 @@ export async function POST(request: Request) {
             console.error('Auth verification failed for scan trigger:', authError);
             return NextResponse.json({ error: 'Unauthorized: Invalid or missing token' }, { status: 401 });
         }
+        const body = await request.json().catch(() => ({}));
+        const scanAll = body.all === true;
+
         // IF RUNNING LOCALLY, ALWAYS FALLBACK TO TERMINAL SO USER CAN WATCH IT LIVE
         if (process.env.NODE_ENV === 'development') {
-            console.log("\n🚀 [LOCAL OVERRIDE] Triggering High-Speed Scanner in local terminal...");
+            const flag = scanAll ? '--all' : '--new';
+            console.log(`\n🚀 [LOCAL OVERRIDE] Triggering High-Speed Scanner (${flag}) in local terminal...`);
             console.log("------------------------------------------------------------------");
 
-            const child = spawn('npx', ['tsx', 'scripts/rescan_db_v3.ts', '--new'], {
+            const child = spawn('npx', ['tsx', 'scripts/rescan_db_v3.ts', flag], {
                 shell: true,
                 detached: true,
                 stdio: 'inherit' // This pumps the live logs directly to the VS Code terminal
@@ -34,11 +38,12 @@ export async function POST(request: Request) {
 
             return NextResponse.json({
                 success: true,
-                message: 'Running scan locally in your VS Code terminal as requested!'
+                message: `Running scan locally (${flag}) in your VS Code terminal as requested!`
             });
         }
 
         const pat = process.env.GITHUB_PAT;
+
 
         if (!pat) {
             return NextResponse.json({

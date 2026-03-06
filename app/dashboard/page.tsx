@@ -536,16 +536,21 @@ function UserDashboardContent() {
     }
   };
 
-  const handleScanNewDomains = async () => {
+  const handleScanNewDomains = async (scanAll: boolean = false) => {
     if (!user?.email) return;
 
-    if (metrics.pendingCount === 0) {
+    if (!scanAll && metrics.pendingCount === 0) {
       toast.info("No domains are pending a scan right now.");
       return;
     }
 
+    if (scanAll && metrics.totalDomains === 0) {
+      toast.info("No domains available to scan.");
+      return;
+    }
+
     setIsScanningNew(true);
-    setScanProgress({ current: 0, total: metrics.pendingCount });
+    setScanProgress({ current: 0, total: scanAll ? metrics.totalDomains : metrics.pendingCount });
 
     try {
       const token = await user.getIdToken();
@@ -554,7 +559,8 @@ function UserDashboardContent() {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        }
+        },
+        body: JSON.stringify({ all: scanAll })
       });
 
       const data = await response.json();
@@ -567,6 +573,7 @@ function UserDashboardContent() {
         }
         throw new Error(data.error || 'Failed to trigger cloud scan');
       }
+      toast.success(data.message);
     } catch (err: any) {
       toast.error(`Error scanning domains: ${err.message}`);
       setIsScanningNew(false);
@@ -1026,19 +1033,29 @@ function UserDashboardContent() {
                           <button
                             onClick={handleCancelScan}
                             disabled={isCancelling}
-                            className="h-10 px-4 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 text-sm font-medium rounded-md transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
+                            className="h-10 px-4 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-500 text-sm font-medium rounded-md transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
                           >
                             {isCancelling && <div className="w-3.5 h-3.5 border-2 border-rose-500/20 border-t-rose-500 rounded-full animate-spin" />}
                             {isCancelling ? 'Terminating...' : 'Stop Execution'}
                           </button>
-                        ) : metrics.pendingCount > 0 ? (
-                          <button
-                            onClick={handleScanNewDomains}
-                            className="h-10 px-4 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-500 text-sm font-medium rounded-md transition-all cursor-pointer flex items-center gap-2"
-                          >
-                            Resume Paused Scan
-                          </button>
-                        ) : null}
+                        ) : (
+                          <>
+                            {metrics.pendingCount > 0 && (
+                              <button
+                                onClick={() => handleScanNewDomains(false)}
+                                className="h-10 px-4 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-500 text-sm font-medium rounded-md transition-all flex items-center gap-2 cursor-pointer"
+                              >
+                                Resume Paused Scan
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleScanNewDomains(true)}
+                              className="h-10 px-4 bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 text-blue-400 text-sm font-medium rounded-md transition-all flex items-center gap-2 cursor-pointer"
+                            >
+                              Scan All Domains
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
