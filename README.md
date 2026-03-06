@@ -9,6 +9,15 @@
 
 A powerful, **full-stack diagnostic tool** that performs deep health checks on thousands of domains in seconds. It allows you to analyze security protocols (SPF, DMARC, DKIM), server health, and blacklist status—all running locally on your machine with **zero cost** and **maximized privacy**.
 
+## 📚 Comprehensive Documentation
+
+We have deeply documented every aspect of this architecture inside the `/docs` folder:
+1. **[Architecture and Data Flow](./docs/Architecture_and_System_Working.md)** - High level system map.
+2. **[Backend Engineering](./docs/Backend_Documentation.md)** - API limits, Parallel DNS lookups.
+3. **[Frontend Structure](./docs/Frontend_Documentation.md)** - React state and UI component layout.
+4. **[User Manual](./docs/User_Manual_and_Features.md)** - Guide for end-users operating the dashboard.
+5. **[Challenges & Bugs](./docs/Issues_and_Challenges.md)** - Technical roadblocks faced and overcome (Vercel limits, DoH, Socket Timeouts).
+
 ---
 
 ## ✨ What Makes This Special?
